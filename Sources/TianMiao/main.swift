@@ -163,6 +163,7 @@ final class CatView: NSView {
     private let rightBlinkLayer = CALayer()
     private let leftBlinkLine = CAShapeLayer()
     private let rightBlinkLine = CAShapeLayer()
+    private let walkCoreLayer = CALayer()
     private let walkTailLayer = CALayer()
     private let walkRearLegLayer = CALayer()
     private let walkHindLegLayer = CALayer()
@@ -216,6 +217,7 @@ final class CatView: NSView {
     override func layout() {
         super.layout()
         rigLayer.frame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.05)
+        walkCoreLayer.frame = rigLayer.bounds
         configurePart(tailLayer, anchor: CGPoint(x: 0.43, y: 0.23))
         configurePart(haunchLayer, anchor: CGPoint(x: 0.56, y: 0.19))
         configurePart(bodyLayer, anchor: CGPoint(x: 0.56, y: 0.31))
@@ -252,12 +254,22 @@ final class CatView: NSView {
 
         rigLayer.masksToBounds = false
         rootLayer.addSublayer(rigLayer)
-        for part in partLayers {
+        walkCoreLayer.masksToBounds = false
+
+        for part in sittingLayers + [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkFrontLegLayer] {
             part.contentsGravity = .resizeAspect
             part.minificationFilter = .linear
             part.magnificationFilter = .linear
             part.masksToBounds = false
             rigLayer.addSublayer(part)
+        }
+        rigLayer.addSublayer(walkCoreLayer)
+        for part in [walkBodyLayer, walkFrontDownLegLayer, walkHeadLayer] {
+            part.contentsGravity = .resizeAspect
+            part.minificationFilter = .linear
+            part.magnificationFilter = .linear
+            part.masksToBounds = false
+            walkCoreLayer.addSublayer(part)
         }
         setupBlinkLayer(leftBlinkLayer, line: leftBlinkLine)
         setupBlinkLayer(rightBlinkLayer, line: rightBlinkLine)
@@ -297,10 +309,11 @@ final class CatView: NSView {
     }
 
     private func configurePart(_ part: CALayer, anchor: CGPoint) {
-        part.bounds = rigLayer.bounds
+        let containerBounds = part.superlayer?.bounds ?? rigLayer.bounds
+        part.bounds = containerBounds
         part.anchorPoint = anchor
-        part.position = CGPoint(x: rigLayer.bounds.width * anchor.x,
-                                y: rigLayer.bounds.height * anchor.y)
+        part.position = CGPoint(x: containerBounds.width * anchor.x,
+                                y: containerBounds.height * anchor.y)
     }
 
     private func loadRigParts() {
@@ -404,6 +417,7 @@ final class CatView: NSView {
 
     private func clearActionMotion() {
         rigLayer.removeAllAnimations()
+        walkCoreLayer.removeAllAnimations()
         shadowLayer.removeAllAnimations()
         partLayers.forEach { $0.removeAllAnimations() }
         leftBlinkLayer.removeAllAnimations()
@@ -411,6 +425,7 @@ final class CatView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         rigLayer.transform = CATransform3DIdentity
+        walkCoreLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
         headLayer.transform = CATransform3DMakeRotation(0.10, 0, 0, 1)
         walkHeadLayer.transform = CATransform3DIdentity
@@ -618,17 +633,13 @@ final class CatView: NSView {
 
         add(rigLayer, "transform.translation.y", [0, 1.4, 0, 1.4, 0], duration, phases,
             repeatCount: forever, key: "walkWeightShift")
-        add(walkBodyLayer, "transform.translation.x", [0, 1.2, 0, -1.2, 0], duration, phases,
-            repeatCount: forever, key: "walkBodyWeight")
-        add(walkBodyLayer, "transform.rotation.z", [0.02, 0, -0.02, 0, 0.02], duration, phases,
+        add(walkCoreLayer, "transform.translation.x", [0, 1.2, 0, -1.2, 0], duration, phases,
+            repeatCount: forever, key: "walkCoreWeight")
+        add(walkCoreLayer, "transform.rotation.z", [0.016, 0, -0.016, 0, 0.016], duration, phases,
             repeatCount: forever, key: "walkSpine")
         add(walkBodyLayer, "transform.scale.x", [1, 1.008, 1, 1.008, 1], duration, phases,
             additive: false, repeatCount: forever, key: "walkBodyStride")
-        add(walkHeadLayer, "transform.translation.x", [0, -0.8, 0, 0.8, 0], duration, phases,
-            repeatCount: forever, key: "walkHeadCounterShift")
-        add(walkHeadLayer, "transform.translation.y", [0, -1, 0, -1, 0], duration, phases,
-            repeatCount: forever, key: "walkHeadBob")
-        add(walkHeadLayer, "transform.rotation.z", [-0.018, 0.012, 0.018, -0.012, -0.018], duration, phases,
+        add(walkHeadLayer, "transform.rotation.z", [-0.006, 0.004, 0.006, -0.004, -0.006], duration, phases,
             repeatCount: forever, key: "walkHeadBalance")
         add(walkTailLayer, "transform.rotation.z", [-0.08, 0, 0.09, 0, -0.08], duration, phases,
             repeatCount: forever, key: "walkTail")
