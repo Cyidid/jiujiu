@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 APP_DIR="$ROOT_DIR/啾啾.app"
 BUILD_APP_DIR="$ROOT_DIR/build/啾啾.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -29,7 +30,9 @@ swiftc "$SOURCE_FILE" \
 
 find "$RESOURCES_DIR" -type f -name '*.png' -delete
 find "$RESOURCES_DIR" -type f -name '*.icns' -delete
-cp "$ROOT_DIR/additional/Applications/啾啾.app/Contents/Resources/"*.png "$RESOURCES_DIR/"
+"$PYTHON_BIN" "$ROOT_DIR/scripts/normalize_sprites.py" \
+  "$ROOT_DIR/additional/Applications/啾啾.app/Contents/Resources" \
+  "$RESOURCES_DIR"
 cp "$ROOT_DIR/additional/Applications/啾啾.app/Contents/Resources/AppIcon.icns" "$RESOURCES_DIR/"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
@@ -51,9 +54,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.3</string>
+  <string>2.4</string>
   <key>CFBundleVersion</key>
-  <string>25</string>
+  <string>26</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>

@@ -434,7 +434,7 @@ final class PetController: NSObject {
     private var velocity = CGVector(dx: 1.8, dy: 1.2)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
-    private let baseSize = NSSize(width: 279, height: 340)
+    private let baseSize = NSSize(width: 360, height: 392)
 
     func start() {
         let size = currentSize()
