@@ -153,6 +153,7 @@ struct PetStats {
 final class CatView: NSView {
     private let shadowLayer = CALayer()
     private let rigLayer = CALayer()
+    private let sittingCoreLayer = CALayer()
     private let tailLayer = CALayer()
     private let bodyLayer = CALayer()
     private let haunchLayer = CALayer()
@@ -217,6 +218,7 @@ final class CatView: NSView {
     override func layout() {
         super.layout()
         rigLayer.frame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.05)
+        sittingCoreLayer.frame = rigLayer.bounds
         walkCoreLayer.frame = rigLayer.bounds
         configurePart(tailLayer, anchor: CGPoint(x: 0.43, y: 0.23))
         configurePart(haunchLayer, anchor: CGPoint(x: 0.56, y: 0.19))
@@ -254,9 +256,25 @@ final class CatView: NSView {
 
         rigLayer.masksToBounds = false
         rootLayer.addSublayer(rigLayer)
+        sittingCoreLayer.masksToBounds = false
         walkCoreLayer.masksToBounds = false
 
-        for part in sittingLayers + [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkFrontLegLayer] {
+        for part in [tailLayer, haunchLayer] {
+            part.contentsGravity = .resizeAspect
+            part.minificationFilter = .linear
+            part.magnificationFilter = .linear
+            part.masksToBounds = false
+            rigLayer.addSublayer(part)
+        }
+        rigLayer.addSublayer(sittingCoreLayer)
+        for part in [bodyLayer, leftPawLayer, rightPawLayer, headLayer] {
+            part.contentsGravity = .resizeAspect
+            part.minificationFilter = .linear
+            part.magnificationFilter = .linear
+            part.masksToBounds = false
+            sittingCoreLayer.addSublayer(part)
+        }
+        for part in [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkFrontLegLayer] {
             part.contentsGravity = .resizeAspect
             part.minificationFilter = .linear
             part.magnificationFilter = .linear
@@ -354,14 +372,16 @@ final class CatView: NSView {
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = walking ? 1 : 0
             fade.toValue = sittingOpacity
-            fade.duration = 0.14
+            fade.duration = walking ? 0.22 : 0.18
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             layer.add(fade, forKey: "poseFade")
         }
         for layer in walkingLayers {
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = walking ? 0 : 1
             fade.toValue = walkingOpacity
-            fade.duration = 0.14
+            fade.duration = walking ? 0.22 : 0.18
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             layer.add(fade, forKey: "poseFade")
         }
     }
@@ -417,6 +437,7 @@ final class CatView: NSView {
 
     private func clearActionMotion() {
         rigLayer.removeAllAnimations()
+        sittingCoreLayer.removeAllAnimations()
         walkCoreLayer.removeAllAnimations()
         shadowLayer.removeAllAnimations()
         partLayers.forEach { $0.removeAllAnimations() }
@@ -425,6 +446,7 @@ final class CatView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         rigLayer.transform = CATransform3DIdentity
+        sittingCoreLayer.transform = CATransform3DIdentity
         walkCoreLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
         headLayer.transform = CATransform3DMakeRotation(0.10, 0, 0, 1)
@@ -497,7 +519,7 @@ final class CatView: NSView {
             add(headLayer, "transform.rotation.z", [0, 0.035, 0.065, 0.035, 0.065, 0.025, 0], total, times)
             add(headLayer, "transform.translation.x", [0, -1, -2, -1, -2, -1, 0], total, times)
             add(rightPawLayer, "transform.scale.y", [1, 0.985, 0.98, 0.985, 0.98, 0.99, 1], total, times, additive: false)
-            add(bodyLayer, "transform.translation.x", [0, 1, 1.5, 1, 1.5, 0.5, 0], total, times)
+            add(sittingCoreLayer, "transform.translation.x", [0, 1, 1.5, 1, 1.5, 0.5, 0], total, times)
             add(tailLayer, "transform.rotation.z", [0, 0.05, -0.035, 0.05, -0.035, 0.025, 0], total, times)
         case .scratch:
             let times: [NSNumber] = [0, 0.1, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.9, 1]
@@ -564,7 +586,7 @@ final class CatView: NSView {
         leftBlinkLayer.opacity = 1
         rightBlinkLayer.opacity = 1
         CATransaction.commit()
-        add(rigLayer, "transform.translation.y", [-3, -4, -3], duration, repeatCount: .infinity)
+        add(sittingCoreLayer, "transform.translation.y", [-3, -4, -3], duration, repeatCount: .infinity)
         add(bodyLayer, "transform.scale.y", [0.97, 0.985, 0.97], duration, additive: false, repeatCount: .infinity)
         add(haunchLayer, "transform.scale.x", [1.025, 1.045, 1.025], duration, additive: false, repeatCount: .infinity)
         add(headLayer, "transform.rotation.z", [-0.07, -0.05, -0.07], duration, repeatCount: .infinity)
@@ -579,7 +601,7 @@ final class CatView: NSView {
     }
 
     private func startIdleMotion() {
-        add(rigLayer, "transform.translation.y", [0, 0.6, 0], 2.7,
+        add(sittingCoreLayer, "transform.translation.y", [0, 0.6, 0], 2.7,
             repeatCount: .infinity, key: "idleWeight")
         add(bodyLayer, "transform.scale.y", [0.998, 1.01, 0.998], 2.7,
             additive: false, repeatCount: .infinity, key: "idleBreath")
