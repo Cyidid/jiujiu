@@ -5,10 +5,13 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
+from generate_anime_source_sprites import fit, transparent_crop
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "Resources" / "normal.png"
 OUTPUT = ROOT / "Resources"
+WALK_SOURCE = ROOT / "assets" / "source" / "multiview" / "pngwing-turn.png"
 SCALE = 4
 
 
@@ -43,6 +46,18 @@ PARTS = {
     ],
 }
 
+WALK_PARTS = {
+    "walk_tail": [(27, 115), (70, 116), (82, 199), (103, 247), (78, 281), (42, 259), (31, 210)],
+    "walk_body": [(48, 204), (103, 188), (166, 198), (220, 225), (250, 266), (228, 312),
+                  (164, 327), (91, 307), (49, 273)],
+    "walk_rear_leg": [(24, 265), (91, 263), (158, 286), (163, 319), (116, 340), (72, 357), (34, 348)],
+    "walk_middle_leg": [(137, 260), (204, 254), (234, 294), (227, 354), (190, 364), (166, 329), (151, 316)],
+    "walk_front_leg": [(203, 230), (275, 220), (336, 235), (344, 269), (309, 292), (255, 286),
+                       (231, 313), (199, 323), (190, 292)],
+    "walk_head": [(102, 168), (119, 129), (171, 116), (195, 92), (228, 127), (274, 141),
+                  (313, 181), (320, 226), (289, 269), (245, 287), (188, 276), (140, 250), (112, 219)],
+}
+
 
 def polygon_mask(size: tuple[int, int], points: list[tuple[int, int]]) -> Image.Image:
     large = Image.new("L", (size[0] * SCALE, size[1] * SCALE), 0)
@@ -75,7 +90,20 @@ def main() -> None:
                          fill=(252, 252, 250, 255))
         part.save(OUTPUT / f"{name}.png", optimize=True)
 
-    print(f"Generated {len(PARTS)} articulated layers in {OUTPUT}")
+    walk_source = fit(transparent_crop(WALK_SOURCE), 326, 250, 42)
+    walk_alpha = walk_source.getchannel("A")
+    walk_masks = {name: polygon_mask(walk_source.size, points) for name, points in WALK_PARTS.items()}
+    walk_masks["walk_body"] = ImageChops.subtract(walk_masks["walk_body"], walk_masks["walk_head"])
+    walk_masks["walk_body"] = ImageChops.subtract(walk_masks["walk_body"], walk_masks["walk_tail"])
+
+    for name, mask in walk_masks.items():
+        mask = Image.composite(walk_alpha, Image.new("L", walk_source.size, 0), mask)
+        masked_source = walk_source.copy()
+        masked_source.putalpha(mask)
+        part = masked_source
+        part.save(OUTPUT / f"{name}.png", optimize=True)
+
+    print(f"Generated {len(PARTS) + len(WALK_PARTS)} articulated layers in {OUTPUT}")
 
 
 if __name__ == "__main__":

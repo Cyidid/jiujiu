@@ -14,6 +14,7 @@ enum PetMood: String {
     case react
     case hop
     case groom
+    case scratch
     case sleep
     case roll
 }
@@ -21,6 +22,7 @@ enum PetMood: String {
 struct PetSettings {
     static let modeKey = "mode"
     static let scaleKey = "scale"
+    static let scaleVersionKey = "scaleVersion"
     static let speedKey = "speed"
     static let remindersEnabledKey = "remindersEnabled"
     static let doNotDisturbKey = "doNotDisturb"
@@ -37,7 +39,12 @@ struct PetSettings {
         let defaults = UserDefaults.standard
         let mode = PetMode(rawValue: defaults.string(forKey: modeKey) ?? "") ?? .roam
         let storedScale = defaults.object(forKey: scaleKey) as? Double
-        let scaleValue = Self.normalizedScale(storedScale)
+        let scaleVersion = defaults.integer(forKey: scaleVersionKey)
+        let scaleValue = Self.normalizedScale(storedScale, version: scaleVersion)
+        if scaleVersion < 2 {
+            defaults.set(scaleValue, forKey: scaleKey)
+            defaults.set(2, forKey: scaleVersionKey)
+        }
         let speedValue = defaults.object(forKey: speedKey) as? Double ?? 1.0
         let reminders = defaults.object(forKey: remindersEnabledKey) as? Bool ?? true
         let dnd = defaults.object(forKey: doNotDisturbKey) as? Bool ?? false
@@ -50,18 +57,21 @@ struct PetSettings {
                            alwaysOnTop: alwaysOnTop)
     }
 
-    private static func normalizedScale(_ storedScale: Double?) -> Double {
-        guard let storedScale else { return 0.58 }
-        if storedScale > 0.8 {
-            return 0.58
+    private static func normalizedScale(_ storedScale: Double?, version: Int) -> Double {
+        guard let storedScale else { return 0.34 }
+        if version < 2 {
+            if storedScale <= 0.50 { return 0.27 }
+            if storedScale <= 0.65 { return 0.34 }
+            return 0.43
         }
-        return min(0.78, max(0.42, storedScale))
+        return min(0.46, max(0.24, storedScale))
     }
 
     func save() {
         let defaults = UserDefaults.standard
         defaults.set(mode.rawValue, forKey: PetSettings.modeKey)
         defaults.set(Double(scale), forKey: PetSettings.scaleKey)
+        defaults.set(2, forKey: PetSettings.scaleVersionKey)
         defaults.set(Double(speed), forKey: PetSettings.speedKey)
         defaults.set(remindersEnabled, forKey: PetSettings.remindersEnabledKey)
         defaults.set(doNotDisturb, forKey: PetSettings.doNotDisturbKey)
@@ -149,6 +159,12 @@ final class CatView: NSView {
     private let leftPawLayer = CALayer()
     private let rightPawLayer = CALayer()
     private let headLayer = CALayer()
+    private let walkTailLayer = CALayer()
+    private let walkRearLegLayer = CALayer()
+    private let walkMiddleLegLayer = CALayer()
+    private let walkBodyLayer = CALayer()
+    private let walkFrontLegLayer = CALayer()
+    private let walkHeadLayer = CALayer()
     private var currentMood: PetMood = .idle
     private var settleTimer: Timer?
     private var isWalking = false
@@ -157,8 +173,20 @@ final class CatView: NSView {
     private var dragStartWindowOrigin: NSPoint = .zero
     private weak var controller: PetController?
 
-    private var partLayers: [CALayer] {
+    private var sittingLayers: [CALayer] {
         [tailLayer, haunchLayer, bodyLayer, leftPawLayer, rightPawLayer, headLayer]
+    }
+
+    private var walkingLayers: [CALayer] {
+        [walkTailLayer, walkRearLegLayer, walkMiddleLegLayer, walkBodyLayer, walkFrontLegLayer, walkHeadLayer]
+    }
+
+    private var partLayers: [CALayer] {
+        sittingLayers + walkingLayers
+    }
+
+    var isPerformingAction: Bool {
+        currentMood != .idle
     }
 
     init(frame: NSRect, controller: PetController) {
@@ -184,6 +212,12 @@ final class CatView: NSView {
         configurePart(leftPawLayer, anchor: CGPoint(x: 0.48, y: 0.31))
         configurePart(rightPawLayer, anchor: CGPoint(x: 0.69, y: 0.31))
         configurePart(headLayer, anchor: CGPoint(x: 0.52, y: 0.39))
+        configurePart(walkTailLayer, anchor: CGPoint(x: 0.23, y: 0.37))
+        configurePart(walkRearLegLayer, anchor: CGPoint(x: 0.28, y: 0.30))
+        configurePart(walkMiddleLegLayer, anchor: CGPoint(x: 0.51, y: 0.31))
+        configurePart(walkBodyLayer, anchor: CGPoint(x: 0.43, y: 0.31))
+        configurePart(walkFrontLegLayer, anchor: CGPoint(x: 0.62, y: 0.36))
+        configurePart(walkHeadLayer, anchor: CGPoint(x: 0.56, y: 0.34))
         shadowLayer.frame = NSRect(x: bounds.width * 0.24,
                                    y: bounds.height * 0.055,
                                    width: bounds.width * 0.52,
@@ -227,12 +261,45 @@ final class CatView: NSView {
             (haunchLayer, "rig_haunches"),
             (leftPawLayer, "rig_paw_left"),
             (rightPawLayer, "rig_paw_right"),
-            (headLayer, "rig_head")
+            (headLayer, "rig_head"),
+            (walkTailLayer, "walk_tail"),
+            (walkRearLegLayer, "walk_rear_leg"),
+            (walkMiddleLegLayer, "walk_middle_leg"),
+            (walkBodyLayer, "walk_body"),
+            (walkFrontLegLayer, "walk_front_leg"),
+            (walkHeadLayer, "walk_head")
         ]
         for (part, name) in resources {
             guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
                   let image = NSImage(contentsOf: url) else { continue }
             part.contents = image
+        }
+        setWalkingPose(false)
+    }
+
+    private func setWalkingPose(_ walking: Bool, animated: Bool = false) {
+        let sittingOpacity: Float = walking ? 0 : 1
+        let walkingOpacity: Float = walking ? 1 : 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        sittingLayers.forEach { $0.opacity = sittingOpacity }
+        walkingLayers.forEach { $0.opacity = walkingOpacity }
+        CATransaction.commit()
+
+        guard animated else { return }
+        for layer in sittingLayers {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = walking ? 1 : 0
+            fade.toValue = sittingOpacity
+            fade.duration = 0.14
+            layer.add(fade, forKey: "poseFade")
+        }
+        for layer in walkingLayers {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = walking ? 0 : 1
+            fade.toValue = walkingOpacity
+            fade.duration = 0.14
+            layer.add(fade, forKey: "poseFade")
         }
     }
 
@@ -248,7 +315,7 @@ final class CatView: NSView {
         settleTimer?.invalidate()
         currentMood = mood
         isWalking = false
-        let actionFrames: [PetMood: Int] = [.blink: 4, .hop: 8, .groom: 7, .roll: 8]
+        let actionFrames: [PetMood: Int] = [.blink: 4, .hop: 8, .groom: 7, .scratch: 12, .roll: 8]
         let duration = frameDuration * Double(actionFrames[mood] ?? 5) * Double(max(1, loops))
         applyActionMotion(for: mood, duration: duration)
         settleTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
@@ -286,8 +353,10 @@ final class CatView: NSView {
         rigLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
         headLayer.transform = CATransform3DMakeRotation(-0.18, 0, 0, 1)
+        walkHeadLayer.transform = CATransform3DMakeRotation(-0.28, 0, 0, 1)
         shadowLayer.opacity = 0.7
         CATransaction.commit()
+        setWalkingPose(false)
     }
 
     private func keyframe(_ keyPath: String,
@@ -347,6 +416,26 @@ final class CatView: NSView {
             add(headLayer, "transform.translation.x", [0, -2, -5, -1, -5, -2, 0], total, times)
             add(rightPawLayer, "transform.rotation.z", [0, 0.04, 0.02, 0.05, 0.02, 0.03, 0], total, times)
             add(tailLayer, "transform.rotation.z", [0, 0.12, -0.08, 0.14, -0.06, 0.1, 0], total, times)
+        case .scratch:
+            let times: [NSNumber] = [0, 0.1, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.9, 1]
+            add(rigLayer, "transform.translation.y", [0, -3, -4, -4, -4, -4, -4, -3, -1, 0], total, times)
+            add(bodyLayer, "transform.scale.y", [1, 0.96, 0.95, 0.955, 0.95, 0.955, 0.95, 0.965, 0.985, 1],
+                total, times, additive: false)
+            add(headLayer, "transform.translation.y", [0, -2, -4, -3, -4, -3, -4, -2, -1, 0], total, times)
+            add(headLayer, "transform.translation.x", [0, 0, -1, 1, -1, 1, -1, 0, 0, 0], total, times)
+            add(leftPawLayer, "transform.translation.y", [0, 2, -5, 4, -6, 4, -6, 3, 1, 0], total, times)
+            add(leftPawLayer, "transform.translation.x", [0, -2, 5, -4, 6, -4, 6, -3, 1, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, -0.04, 0.13, -0.1, 0.15, -0.1, 0.14, -0.06, 0.02, 0], total, times)
+            add(rightPawLayer, "transform.translation.y", [0, -4, 3, -6, 4, -6, 4, -5, 1, 0], total, times)
+            add(rightPawLayer, "transform.translation.x", [0, -5, 4, -6, 4, -6, 4, -5, -1, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.12, 0.08, -0.15, 0.1, -0.15, 0.1, -0.12, -0.02, 0], total, times)
+            add(haunchLayer, "transform.scale.x", [1, 1.035, 1.04, 1.025, 1.04, 1.025, 1.04, 1.02, 1.01, 1],
+                total, times, additive: false)
+            add(tailLayer, "transform.rotation.z", [0, -0.08, 0.1, -0.12, 0.13, -0.12, 0.11, -0.07, 0.03, 0], total, times)
+            addShadowPulse(scale: [1, 1.05, 1.08, 1.04, 1.08, 1.04, 1.08, 1.04, 1.01, 1],
+                           opacity: [0.68, 0.73, 0.76, 0.72, 0.76, 0.72, 0.76, 0.72, 0.69, 0.68],
+                           duration: total,
+                           keyTimes: times)
         case .sleep:
             applySleepMotion()
         case .roll:
@@ -400,8 +489,6 @@ final class CatView: NSView {
     private func startIdleMotion() {
         add(bodyLayer, "transform.scale.y", [0.995, 1.018, 0.995], 2.5,
             additive: false, repeatCount: .infinity, key: "idleBreath")
-        add(headLayer, "transform.rotation.z", [-0.006, 0.006, -0.006], 3.8,
-            repeatCount: .infinity, key: "idleHead")
         add(tailLayer, "transform.rotation.z", [-0.055, 0.075, -0.055], 2.6,
             repeatCount: .infinity, key: "idleTail")
         addShadowPulse(scale: [0.97, 1.03, 0.97],
@@ -414,28 +501,31 @@ final class CatView: NSView {
         guard !isWalking, currentMood == .idle else { return }
         clearActionMotion()
         isWalking = true
+        setWalkingPose(true, animated: true)
         let forever = Float.infinity
-        add(leftPawLayer, "transform.rotation.z", [-0.1, 0.1, -0.1], 0.56,
-            repeatCount: forever, key: "walkLeftRotation")
-        add(leftPawLayer, "transform.translation.y", [0, 5, 0], 0.56,
-            repeatCount: forever, key: "walkLeftLift")
-        add(rightPawLayer, "transform.rotation.z", [0.1, -0.1, 0.1], 0.56,
-            repeatCount: forever, key: "walkRightRotation")
-        add(rightPawLayer, "transform.translation.y", [5, 0, 5], 0.56,
-            repeatCount: forever, key: "walkRightLift")
-        add(bodyLayer, "transform.translation.y", [0, 2, 0], 0.28,
-            repeatCount: forever, key: "walkBody")
-        add(haunchLayer, "transform.rotation.z", [-0.014, 0.014, -0.014], 0.56,
-            repeatCount: forever, key: "walkHaunch")
-        add(headLayer, "transform.translation.y", [0.6, -1.2, 0.6], 0.56,
+        add(walkFrontLegLayer, "transform.rotation.z", [-0.13, 0.15, -0.13], 0.54,
+            repeatCount: forever, key: "walkFrontRotation")
+        add(walkFrontLegLayer, "transform.translation.y", [0, 5, 0], 0.54,
+            repeatCount: forever, key: "walkFrontLift")
+        add(walkRearLegLayer, "transform.rotation.z", [0.14, -0.14, 0.14], 0.54,
+            repeatCount: forever, key: "walkRearRotation")
+        add(walkRearLegLayer, "transform.translation.y", [5, 0, 5], 0.54,
+            repeatCount: forever, key: "walkRearLift")
+        add(walkMiddleLegLayer, "transform.rotation.z", [-0.08, 0.09, -0.08], 0.54,
+            repeatCount: forever, key: "walkMiddleRotation")
+        add(walkMiddleLegLayer, "transform.translation.y", [1, 4, 1], 0.54,
+            repeatCount: forever, key: "walkMiddleLift")
+        add(walkBodyLayer, "transform.translation.y", [0, 2.4, 0], 0.27,
+            repeatCount: forever, key: "walkBodyBob")
+        add(walkBodyLayer, "transform.scale.x", [1, 1.012, 1], 0.54,
+            additive: false, repeatCount: forever, key: "walkBodyStride")
+        add(walkHeadLayer, "transform.translation.y", [0.7, -1.1, 0.7], 0.54,
             repeatCount: forever, key: "walkHeadBob")
-        add(headLayer, "transform.rotation.z", [-0.008, 0.008, -0.008], 0.56,
-            repeatCount: forever, key: "walkHeadTilt")
-        add(tailLayer, "transform.rotation.z", [-0.12, 0.14, -0.12], 0.9,
+        add(walkTailLayer, "transform.rotation.z", [-0.09, 0.11, -0.09], 0.82,
             repeatCount: forever, key: "walkTail")
         addShadowPulse(scale: [0.94, 1.04, 0.94],
                        opacity: [0.62, 0.74, 0.62],
-                       duration: 0.56,
+                       duration: 0.54,
                        repeatForever: true)
     }
 
@@ -493,6 +583,7 @@ final class CatView: NSView {
         guard isWalking else { return }
         isWalking = false
         clearActionMotion()
+        setWalkingPose(false, animated: true)
         startIdleMotion()
     }
 
@@ -528,18 +619,13 @@ final class CatView: NSView {
             stopWalkCycle()
         }
         let limitedX = max(-1.0, min(1.0, dx / 4.0))
-        let limitedY = max(-1.0, min(1.0, dy / 4.0))
-        var transform = CATransform3DIdentity
-        transform.m34 = -1.0 / 650.0
-        transform = CATransform3DRotate(transform, limitedX * 0.12, 0, 1, 0)
-        transform = CATransform3DRotate(transform, -limitedY * 0.08, 1, 0, 0)
-        transform = CATransform3DRotate(transform, -limitedX * 0.035, 0, 0, 1)
+        let transform = CATransform3DMakeScale(limitedX < 0 ? -1 : 1, 1, 1)
 
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.18)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
         rigLayer.transform = transform
-        shadowLayer.opacity = Float(0.55 + min(0.22, abs(limitedX) * 0.16 + abs(limitedY) * 0.08))
+        shadowLayer.opacity = Float(0.6 + min(0.12, abs(limitedX) * 0.1))
         CATransaction.commit()
     }
 
@@ -581,6 +667,10 @@ final class CatView: NSView {
 
     func runInteractionPreview() {
         reactToClick(at: NSPoint(x: bounds.midX * 0.72, y: bounds.midY))
+    }
+
+    func runScratchPreview() {
+        play(.scratch, frameDuration: 0.11, loops: 1)
     }
 }
 
@@ -660,7 +750,9 @@ final class PetController: NSObject {
     private var reminderTimer: Timer?
     private var decayTimer: Timer?
     private var focusTimer: Timer?
-    private var velocity = CGVector(dx: -1.8, dy: 1.2)
+    private var velocity = CGVector(dx: -1.45, dy: 0)
+    private var isRoamWalking = true
+    private var roamTransitionAt = Date().addingTimeInterval(5)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
     private let baseSize = NSSize(width: 360, height: 392)
@@ -688,6 +780,11 @@ final class PetController: NSObject {
                 self?.catView.runInteractionPreview()
             }
         }
+        if ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_ACTION"] == "scratch" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.catView.runScratchPreview()
+            }
+        }
     }
 
     func makeMenu() -> NSMenu {
@@ -706,9 +803,9 @@ final class PetController: NSObject {
         menu.addItem(item("角落休息", action: #selector(setCorner), checked: settings.mode == .corner))
         menu.addItem(NSMenuItem(title: "召唤到鼠标旁", action: #selector(summonToMouse), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(item("小一点", action: #selector(sizeSmall), checked: abs(settings.scale - 0.46) < 0.01))
-        menu.addItem(item("标准大小", action: #selector(sizeNormal), checked: abs(settings.scale - 0.58) < 0.01))
-        menu.addItem(item("大一点", action: #selector(sizeLarge), checked: abs(settings.scale - 0.72) < 0.01))
+        menu.addItem(item("小一点", action: #selector(sizeSmall), checked: abs(settings.scale - 0.27) < 0.01))
+        menu.addItem(item("标准大小", action: #selector(sizeNormal), checked: abs(settings.scale - 0.34) < 0.01))
+        menu.addItem(item("大一点", action: #selector(sizeLarge), checked: abs(settings.scale - 0.43) < 0.01))
         menu.addItem(.separator())
         menu.addItem(item("慢悠悠", action: #selector(speedSlow), checked: settings.speed == 0.65))
         menu.addItem(item("正常速度", action: #selector(speedNormal), checked: settings.speed == 1.0))
@@ -716,6 +813,7 @@ final class PetController: NSObject {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "打个滚", action: #selector(roll), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "梳毛", action: #selector(groom), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "挠一挠", action: #selector(scratch), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "睡一会儿", action: #selector(nap), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(item("置顶显示", action: #selector(toggleAlwaysOnTop), checked: settings.alwaysOnTop))
@@ -743,7 +841,11 @@ final class PetController: NSObject {
 
     private func initialOrigin(size: NSSize) -> NSPoint {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return NSPoint(x: screen.maxX - size.width - 32, y: screen.minY + 36)
+        return NSPoint(x: screen.maxX - size.width - 32, y: groundY(in: screen))
+    }
+
+    private func groundY(in screen: NSRect) -> CGFloat {
+        screen.minY + 12
     }
 
     private func startMovement() {
@@ -758,11 +860,13 @@ final class PetController: NSObject {
         behaviorTimer = Timer.scheduledTimer(withTimeInterval: 7.5, repeats: true) { [weak self] _ in
             guard let self else { return }
             let roll = Int.random(in: 0..<100)
-            if roll < 48 {
+            if roll < 34 {
                 self.catView.playIfIdle(.blink, frameDuration: 0.11, loops: 1)
-            } else if roll < 72 {
+            } else if roll < 54 {
                 self.catView.playIfIdle(.groom, frameDuration: 0.16, loops: 1)
-            } else if roll < 88 {
+            } else if roll < 78 {
+                self.catView.playIfIdle(.scratch, frameDuration: 0.11, loops: 1)
+            } else if roll < 90 {
                 self.catView.playIfIdle(.hop, frameDuration: 0.12, loops: 1)
             } else {
                 self.catView.startSleepIfIdle()
@@ -810,40 +914,56 @@ final class PetController: NSObject {
     private func roam(_ window: NSWindow) {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         var frame = window.frame
-        frame.origin.x += velocity.dx * settings.speed * 0.55
-        frame.origin.y += velocity.dy * settings.speed * 0.55
+        frame.origin.y += (groundY(in: screen) - frame.origin.y) * 0.16
+
+        if catView.isPerformingAction {
+            window.setFrameOrigin(frame.origin)
+            return
+        }
+
+        if Date() >= roamTransitionAt {
+            isRoamWalking.toggle()
+            if isRoamWalking {
+                let magnitude = CGFloat.random(in: 1.15...1.7)
+                velocity.dx = Bool.random() ? magnitude : -magnitude
+                roamTransitionAt = Date().addingTimeInterval(Double.random(in: 4.5...9.0))
+            } else {
+                roamTransitionAt = Date().addingTimeInterval(Double.random(in: 1.8...4.5))
+            }
+        }
+
+        guard isRoamWalking else {
+            catView.setMotionTilt(dx: 0, dy: 0)
+            window.setFrameOrigin(frame.origin)
+            return
+        }
+
+        frame.origin.x += velocity.dx * settings.speed * 0.52
 
         if frame.minX < screen.minX || frame.maxX > screen.maxX {
             velocity.dx *= -1
             frame.origin.x = min(max(frame.origin.x, screen.minX), screen.maxX - frame.width)
-            catView.playIfIdle(.roll, frameDuration: 0.08, loops: 1)
+            isRoamWalking = false
+            roamTransitionAt = Date().addingTimeInterval(Double.random(in: 0.8...1.8))
         }
-        if frame.minY < screen.minY || frame.maxY > screen.maxY {
-            velocity.dy *= -1
-            frame.origin.y = min(max(frame.origin.y, screen.minY), screen.maxY - frame.height)
-            catView.playIfIdle(.hop, frameDuration: 0.11, loops: 1)
-        }
-
-        if Int.random(in: 0..<260) == 0 {
-            velocity.dx = CGFloat.random(in: -2.2...2.2)
-            velocity.dy = CGFloat.random(in: -1.8...1.8)
-        }
-        catView.setMotionTilt(dx: velocity.dx, dy: velocity.dy)
+        catView.setMotionTilt(dx: velocity.dx, dy: 0)
         window.setFrameOrigin(frame.origin)
     }
 
     private func followMouse(_ window: NSWindow) {
         let mouse = NSEvent.mouseLocation
         let frame = window.frame
-        let target = NSPoint(x: mouse.x - frame.width / 2, y: mouse.y - frame.height / 2)
-        catView.setMotionTilt(dx: target.x - frame.origin.x, dy: target.y - frame.origin.y)
+        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let target = NSPoint(x: min(max(mouse.x - frame.width / 2, screen.minX), screen.maxX - frame.width),
+                             y: groundY(in: screen))
+        catView.setMotionTilt(dx: target.x - frame.origin.x, dy: 0)
         move(window, toward: target, easing: 0.045 * settings.speed)
     }
 
     private func moveTowardCorner(_ window: NSWindow) {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let target = NSPoint(x: screen.maxX - window.frame.width - 28, y: screen.minY + 28)
-        catView.setMotionTilt(dx: target.x - window.frame.origin.x, dy: target.y - window.frame.origin.y)
+        let target = NSPoint(x: screen.maxX - window.frame.width - 28, y: groundY(in: screen))
+        catView.setMotionTilt(dx: target.x - window.frame.origin.x, dy: 0)
         move(window, toward: target, easing: 0.05)
     }
 
@@ -861,6 +981,8 @@ final class PetController: NSObject {
     func resumeMovementAfterInteraction() {
         settings.mode = .roam
         settings.save()
+        isRoamWalking = true
+        roamTransitionAt = Date().addingTimeInterval(Double.random(in: 4.5...8.0))
         startMovement()
     }
 
@@ -868,7 +990,7 @@ final class PetController: NSObject {
         guard let window else { return }
         let mouse = NSEvent.mouseLocation
         let center = NSPoint(x: window.frame.midX, y: window.frame.midY)
-        velocity = CGVector(dx: center.x >= mouse.x ? 2.4 : -2.4, dy: center.y >= mouse.y ? 1.8 : -1.8)
+        velocity = CGVector(dx: center.x >= mouse.x ? 1.7 : -1.7, dy: 0)
     }
 
     func receiveClick() {
@@ -912,6 +1034,8 @@ final class PetController: NSObject {
 
     @objc private func setRoam() {
         settings.mode = .roam
+        isRoamWalking = true
+        roamTransitionAt = Date().addingTimeInterval(Double.random(in: 4.5...8.0))
         applySettings()
         showBubble("我去逛逛")
     }
@@ -930,19 +1054,19 @@ final class PetController: NSObject {
     }
 
     @objc private func sizeSmall() {
-        settings.scale = 0.46
+        settings.scale = 0.27
         applySettings()
         showBubble("变小一点")
     }
 
     @objc private func sizeNormal() {
-        settings.scale = 0.58
+        settings.scale = 0.34
         applySettings()
         showBubble("标准大小")
     }
 
     @objc private func sizeLarge() {
-        settings.scale = 0.72
+        settings.scale = 0.43
         applySettings()
         showBubble("变大一点")
     }
@@ -977,6 +1101,12 @@ final class PetController: NSObject {
         showBubble("把毛整理好")
     }
 
+    @objc private func scratch() {
+        stats.adjust(happiness: 4, energy: -2)
+        catView.play(.scratch, frameDuration: 0.11, loops: 1)
+        showBubble("磨磨小爪子")
+    }
+
     @objc private func nap() {
         stats.adjust(energy: 10)
         catView.startSleepLoop()
@@ -1009,7 +1139,9 @@ final class PetController: NSObject {
     @objc private func summonToMouse() {
         guard let window else { return }
         let mouse = NSEvent.mouseLocation
-        let origin = NSPoint(x: mouse.x - window.frame.width / 2, y: mouse.y - window.frame.height / 2)
+        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let origin = NSPoint(x: min(max(mouse.x - window.frame.width / 2, screen.minX), screen.maxX - window.frame.width),
+                             y: groundY(in: screen))
         window.setFrameOrigin(origin)
         settings.mode = .follow
         settings.save()
