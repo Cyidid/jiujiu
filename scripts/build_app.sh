@@ -51,9 +51,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.0</string>
+  <string>2.1</string>
   <key>CFBundleVersion</key>
-  <string>22</string>
+  <string>23</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>
@@ -73,7 +73,13 @@ mv "$APP_DIR" "$ROOT_DIR/啾啾.app"
 
 APP_DIR="$ROOT_DIR/啾啾.app"
 xattr -cr "$APP_DIR"
-xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
-xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
+xattr -rd com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -rd 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
+xattr -rd com.apple.ResourceFork "$APP_DIR" 2>/dev/null || true
+xattr -rd com.apple.provenance "$APP_DIR" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
+xattr -cr "$APP_DIR"
+xattr -rd com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -rd 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
+xattr -rd com.apple.ResourceFork "$APP_DIR" 2>/dev/null || true
 echo "Built $APP_DIR"

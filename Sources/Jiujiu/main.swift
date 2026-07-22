@@ -21,17 +21,31 @@ struct PetSettings {
     static let modeKey = "mode"
     static let scaleKey = "scale"
     static let speedKey = "speed"
+    static let remindersEnabledKey = "remindersEnabled"
+    static let doNotDisturbKey = "doNotDisturb"
+    static let alwaysOnTopKey = "alwaysOnTop"
 
     var mode: PetMode
     var scale: CGFloat
     var speed: CGFloat
+    var remindersEnabled: Bool
+    var doNotDisturb: Bool
+    var alwaysOnTop: Bool
 
     static func load() -> PetSettings {
         let defaults = UserDefaults.standard
         let mode = PetMode(rawValue: defaults.string(forKey: modeKey) ?? "") ?? .roam
         let scaleValue = defaults.object(forKey: scaleKey) as? Double ?? 0.82
         let speedValue = defaults.object(forKey: speedKey) as? Double ?? 1.0
-        return PetSettings(mode: mode, scale: CGFloat(scaleValue), speed: CGFloat(speedValue))
+        let reminders = defaults.object(forKey: remindersEnabledKey) as? Bool ?? true
+        let dnd = defaults.object(forKey: doNotDisturbKey) as? Bool ?? false
+        let alwaysOnTop = defaults.object(forKey: alwaysOnTopKey) as? Bool ?? true
+        return PetSettings(mode: mode,
+                           scale: CGFloat(scaleValue),
+                           speed: CGFloat(speedValue),
+                           remindersEnabled: reminders,
+                           doNotDisturb: dnd,
+                           alwaysOnTop: alwaysOnTop)
     }
 
     func save() {
@@ -39,6 +53,80 @@ struct PetSettings {
         defaults.set(mode.rawValue, forKey: PetSettings.modeKey)
         defaults.set(Double(scale), forKey: PetSettings.scaleKey)
         defaults.set(Double(speed), forKey: PetSettings.speedKey)
+        defaults.set(remindersEnabled, forKey: PetSettings.remindersEnabledKey)
+        defaults.set(doNotDisturb, forKey: PetSettings.doNotDisturbKey)
+        defaults.set(alwaysOnTop, forKey: PetSettings.alwaysOnTopKey)
+    }
+}
+
+struct PetStats {
+    static let hungerKey = "hunger"
+    static let happinessKey = "happiness"
+    static let energyKey = "energy"
+    static let lastUpdatedKey = "lastUpdated"
+
+    var hunger: Int
+    var happiness: Int
+    var energy: Int
+    var lastUpdated: Date
+
+    static func load() -> PetStats {
+        let defaults = UserDefaults.standard
+        var stats = PetStats(
+            hunger: defaults.object(forKey: hungerKey) as? Int ?? 74,
+            happiness: defaults.object(forKey: happinessKey) as? Int ?? 78,
+            energy: defaults.object(forKey: energyKey) as? Int ?? 82,
+            lastUpdated: defaults.object(forKey: lastUpdatedKey) as? Date ?? Date()
+        )
+        stats.applyOfflineDecay()
+        stats.save()
+        return stats
+    }
+
+    var moodLine: String {
+        if hunger < 30 { return "有点饿" }
+        if energy < 28 { return "想睡觉" }
+        if happiness < 35 { return "想被陪一下" }
+        if hunger > 82 && happiness > 82 && energy > 72 { return "状态很好" }
+        return "安静陪你"
+    }
+
+    var compactLine: String {
+        "饱腹 \(hunger)%  开心 \(happiness)%  精力 \(energy)%"
+    }
+
+    mutating func adjust(hunger hungerDelta: Int = 0, happiness happinessDelta: Int = 0, energy energyDelta: Int = 0) {
+        hunger = Self.clamp(hunger + hungerDelta)
+        happiness = Self.clamp(happiness + happinessDelta)
+        energy = Self.clamp(energy + energyDelta)
+        lastUpdated = Date()
+        save()
+    }
+
+    mutating func decayTick() {
+        adjust(hunger: -1, happiness: -1, energy: -1)
+    }
+
+    mutating func applyOfflineDecay() {
+        let minutes = Int(Date().timeIntervalSince(lastUpdated) / 60)
+        guard minutes >= 20 else { return }
+        let steps = min(18, minutes / 20)
+        hunger = Self.clamp(hunger - steps)
+        happiness = Self.clamp(happiness - max(1, steps / 2))
+        energy = Self.clamp(energy - max(1, steps / 2))
+        lastUpdated = Date()
+    }
+
+    func save() {
+        let defaults = UserDefaults.standard
+        defaults.set(hunger, forKey: Self.hungerKey)
+        defaults.set(happiness, forKey: Self.happinessKey)
+        defaults.set(energy, forKey: Self.energyKey)
+        defaults.set(lastUpdated, forKey: Self.lastUpdatedKey)
+    }
+
+    private static func clamp(_ value: Int) -> Int {
+        min(100, max(0, value))
     }
 }
 
@@ -171,6 +259,7 @@ final class CatView: NSView {
 
     @objc func clickReact() {
         play([PetMood.blink, .groom, .hop].randomElement() ?? .blink, frameDuration: 0.13, loops: 1)
+        controller?.receiveClick()
         controller?.nudgeAwayFromMouse()
     }
 }
@@ -193,19 +282,67 @@ final class JiujiuWindow: NSWindow {
     }
 }
 
+final class BubbleWindow: NSWindow {
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 240, height: 56),
+                   styleMask: [.borderless],
+                   backing: .buffered,
+                   defer: false)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        ignoresMouseEvents = true
+
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 56))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.92).cgColor
+        content.layer?.cornerRadius = 14
+        content.layer?.borderColor = NSColor(calibratedWhite: 0.86, alpha: 1).cgColor
+        content.layer?.borderWidth = 1
+
+        label.frame = NSRect(x: 14, y: 9, width: 212, height: 38)
+        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        label.textColor = NSColor(calibratedWhite: 0.18, alpha: 1)
+        label.alignment = .center
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 2
+        content.addSubview(label)
+        self.contentView = content
+    }
+
+    func show(_ message: String, near frame: NSRect, for seconds: TimeInterval = 3.2) {
+        label.stringValue = message
+        let origin = NSPoint(x: frame.midX - self.frame.width / 2, y: frame.maxY + 10)
+        setFrameOrigin(origin)
+        orderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            self?.orderOut(nil)
+        }
+    }
+}
+
 final class PetController: NSObject {
     private(set) var window: JiujiuWindow!
     private(set) var catView: CatView!
+    private let bubbleWindow = BubbleWindow()
     private var movementTimer: Timer?
     private var behaviorTimer: Timer?
     private var reminderTimer: Timer?
+    private var decayTimer: Timer?
+    private var focusTimer: Timer?
     private var velocity = CGVector(dx: 1.8, dy: 1.2)
     private var settings = PetSettings.load()
+    private var stats = PetStats.load()
     private let baseSize = NSSize(width: 512, height: 528)
 
     func start() {
         let size = currentSize()
         window = JiujiuWindow(contentRect: NSRect(origin: initialOrigin(size: size), size: size))
+        window.level = settings.alwaysOnTop ? .floating : .normal
         catView = CatView(frame: NSRect(origin: .zero, size: size), controller: self)
         window.contentView = catView
 
@@ -218,13 +355,25 @@ final class PetController: NSObject {
         startMovement()
         startAmbientBehaviors()
         startGentleReminders()
+        startNeedsDecay()
+        showBubble("啾啾来了，\(stats.moodLine)")
     }
 
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        let status = NSMenuItem(title: stats.compactLine, action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
+        menu.addItem(NSMenuItem(title: "看状态", action: #selector(showStatus), keyEquivalent: ""))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "喂小鱼干", action: #selector(feed), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "陪它玩", action: #selector(playTogether), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "摸摸头", action: #selector(pat), keyEquivalent: ""))
+        menu.addItem(.separator())
         menu.addItem(item("自由游走", action: #selector(setRoam), checked: settings.mode == .roam))
         menu.addItem(item("跟随鼠标", action: #selector(setFollow), checked: settings.mode == .follow))
         menu.addItem(item("角落休息", action: #selector(setCorner), checked: settings.mode == .corner))
+        menu.addItem(NSMenuItem(title: "召唤到鼠标旁", action: #selector(summonToMouse), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(item("小一点", action: #selector(sizeSmall), checked: settings.scale == 0.68))
         menu.addItem(item("标准大小", action: #selector(sizeNormal), checked: settings.scale == 0.82))
@@ -238,7 +387,15 @@ final class PetController: NSObject {
         menu.addItem(NSMenuItem(title: "梳毛", action: #selector(groom), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "睡一会儿", action: #selector(nap), keyEquivalent: ""))
         menu.addItem(.separator())
+        menu.addItem(item("置顶显示", action: #selector(toggleAlwaysOnTop), checked: settings.alwaysOnTop))
+        menu.addItem(item("休息提醒", action: #selector(toggleReminders), checked: settings.remindersEnabled))
+        menu.addItem(item("勿扰模式", action: #selector(toggleDoNotDisturb), checked: settings.doNotDisturb))
+        menu.addItem(NSMenuItem(title: "开始 25 分钟专注", action: #selector(startFocus), keyEquivalent: ""))
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出啾啾", action: #selector(quit), keyEquivalent: "q"))
+        for menuItem in menu.items where menuItem.action != nil && menuItem.target == nil {
+            menuItem.target = self
+        }
         return menu
     }
 
@@ -285,8 +442,25 @@ final class PetController: NSObject {
     private func startGentleReminders() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         reminderTimer?.invalidate()
+        guard settings.remindersEnabled else { return }
         reminderTimer = Timer.scheduledTimer(withTimeInterval: 45 * 60, repeats: true) { [weak self] _ in
             self?.showReminder("休息一下，喝口水")
+        }
+    }
+
+    private func startNeedsDecay() {
+        decayTimer?.invalidate()
+        decayTimer = Timer.scheduledTimer(withTimeInterval: 8 * 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.stats.decayTick()
+            if self.stats.hunger < 26 {
+                self.showBubble("有点饿，想吃小鱼干")
+            } else if self.stats.energy < 24 {
+                self.catView.startSleepLoop()
+                self.showBubble("啾啾困了")
+            } else if self.stats.happiness < 28 {
+                self.showBubble("想被陪一下")
+            }
         }
     }
 
@@ -363,7 +537,21 @@ final class PetController: NSObject {
         velocity = CGVector(dx: center.x >= mouse.x ? 2.4 : -2.4, dy: center.y >= mouse.y ? 1.8 : -1.8)
     }
 
+    func receiveClick() {
+        stats.adjust(happiness: 2)
+        if Int.random(in: 0..<3) == 0 {
+            showBubble(["在呢", "喵", stats.moodLine].randomElement() ?? "喵")
+        }
+    }
+
+    func showBubble(_ message: String, seconds: TimeInterval = 3.2) {
+        guard !settings.doNotDisturb, let window else { return }
+        bubbleWindow.level = settings.alwaysOnTop ? .floating : .normal
+        bubbleWindow.show(message, near: window.frame, for: seconds)
+    }
+
     private func showReminder(_ message: String) {
+        guard settings.remindersEnabled, !settings.doNotDisturb else { return }
         let content = UNMutableNotificationContent()
         content.title = "啾啾"
         content.body = message
@@ -379,6 +567,7 @@ final class PetController: NSObject {
         settings.save()
         let size = currentSize()
         guard let window else { return }
+        window.level = settings.alwaysOnTop ? .floating : .normal
         window.setFrame(NSRect(origin: window.frame.origin, size: size), display: true, animate: true)
         catView.frame = NSRect(origin: .zero, size: size)
         if settings.mode == .corner {
@@ -390,58 +579,146 @@ final class PetController: NSObject {
     @objc private func setRoam() {
         settings.mode = .roam
         applySettings()
+        showBubble("我去逛逛")
     }
 
     @objc private func setFollow() {
         settings.mode = .follow
         applySettings()
+        showBubble("跟着你走")
     }
 
     @objc private func setCorner() {
         settings.mode = .corner
         applySettings()
+        catView.startSleepLoop()
+        showBubble("我在角落陪你")
     }
 
     @objc private func sizeSmall() {
         settings.scale = 0.68
         applySettings()
+        showBubble("变小一点")
     }
 
     @objc private func sizeNormal() {
         settings.scale = 0.82
         applySettings()
+        showBubble("标准大小")
     }
 
     @objc private func sizeLarge() {
         settings.scale = 1.0
         applySettings()
+        showBubble("变大一点")
     }
 
     @objc private func speedSlow() {
         settings.speed = 0.65
         applySettings()
+        showBubble("慢悠悠")
     }
 
     @objc private func speedNormal() {
         settings.speed = 1.0
         applySettings()
+        showBubble("正常速度")
     }
 
     @objc private func speedFast() {
         settings.speed = 1.45
         applySettings()
+        showBubble("精神起来了")
     }
 
     @objc private func roll() {
+        stats.adjust(happiness: 4, energy: -3)
         catView.play(.roll, frameDuration: 0.08, loops: 1)
+        showBubble("咕噜")
     }
 
     @objc private func groom() {
+        stats.adjust(happiness: 3, energy: -1)
         catView.play(.groom, frameDuration: 0.15, loops: 2)
+        showBubble("把毛整理好")
     }
 
     @objc private func nap() {
+        stats.adjust(energy: 10)
         catView.startSleepLoop()
+        showBubble("睡一小会儿")
+    }
+
+    @objc private func showStatus() {
+        showBubble("\(stats.moodLine)\n\(stats.compactLine)", seconds: 5.0)
+    }
+
+    @objc private func feed() {
+        stats.adjust(hunger: 18, happiness: 5, energy: 2)
+        catView.play(.groom, frameDuration: 0.13, loops: 1)
+        showBubble("小鱼干真好吃")
+    }
+
+    @objc private func playTogether() {
+        stats.adjust(hunger: -5, happiness: 16, energy: -8)
+        catView.play(.hop, frameDuration: 0.1, loops: 2)
+        nudgeAwayFromMouse()
+        showBubble("再玩一下")
+    }
+
+    @objc private func pat() {
+        stats.adjust(happiness: 10, energy: 2)
+        catView.play(.blink, frameDuration: 0.1, loops: 2)
+        showBubble("呼噜呼噜")
+    }
+
+    @objc private func summonToMouse() {
+        guard let window else { return }
+        let mouse = NSEvent.mouseLocation
+        let origin = NSPoint(x: mouse.x - window.frame.width / 2, y: mouse.y - window.frame.height / 2)
+        window.setFrameOrigin(origin)
+        settings.mode = .follow
+        settings.save()
+        startMovement()
+        showBubble("我来了")
+    }
+
+    @objc private func toggleAlwaysOnTop() {
+        settings.alwaysOnTop.toggle()
+        settings.save()
+        window.level = settings.alwaysOnTop ? .floating : .normal
+        showBubble(settings.alwaysOnTop ? "继续置顶" : "不挡你了")
+    }
+
+    @objc private func toggleReminders() {
+        settings.remindersEnabled.toggle()
+        settings.save()
+        startGentleReminders()
+        showBubble(settings.remindersEnabled ? "休息提醒已开启" : "休息提醒已关闭")
+    }
+
+    @objc private func toggleDoNotDisturb() {
+        settings.doNotDisturb.toggle()
+        settings.save()
+        if settings.doNotDisturb {
+            bubbleWindow.orderOut(nil)
+        } else {
+            showBubble("勿扰已关闭")
+        }
+    }
+
+    @objc private func startFocus() {
+        focusTimer?.invalidate()
+        settings.mode = .corner
+        settings.save()
+        applySettings()
+        catView.startSleepLoop()
+        showBubble("开始 25 分钟专注", seconds: 4.0)
+        focusTimer = Timer.scheduledTimer(withTimeInterval: 25 * 60, repeats: false) { [weak self] _ in
+            self?.stats.adjust(happiness: 6, energy: 6)
+            self?.showReminder("专注结束，起来活动一下")
+            self?.catView.play(.hop, frameDuration: 0.11, loops: 3)
+        }
     }
 
     @objc private func quit() {
