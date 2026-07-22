@@ -16,8 +16,8 @@ TABBY = (138, 141, 140, 255)
 TABBY_DARK = (87, 91, 92, 255)
 EAR = (255, 188, 190, 255)
 BLUSH = (255, 185, 190, 135)
-EYE = (83, 132, 166, 255)
-EYE_DARK = (35, 58, 76, 255)
+EYE = (28, 30, 32, 255)
+EYE_DARK = (18, 20, 22, 255)
 PINK = (238, 105, 132, 255)
 WHITE = (255, 255, 255, 255)
 
@@ -74,12 +74,12 @@ def draw_ears(d: ImageDraw.ImageDraw, cx: float, cy: float) -> None:
 
 def draw_chi_marks(d: ImageDraw.ImageDraw, cx: float, cy: float) -> None:
     # soft tabby cap and the recognizable kitten forehead rhythm, but kept as original vector drawing.
-    d.pieslice((sc(cx - 68), sc(cy - 70), sc(cx + 68), sc(cy + 38)), 196, 344, fill=TABBY)
-    line(d, [(cx - 21, cy - 60), (cx - 14, cy - 35), (cx - 5, cy - 58)], TABBY_DARK, 3)
-    line(d, [(cx + 21, cy - 60), (cx + 14, cy - 35), (cx + 5, cy - 58)], TABBY_DARK, 3)
-    line(d, [(cx - 7, cy - 62), (cx, cy - 39), (cx + 7, cy - 62)], TABBY_DARK, 3)
-    line(d, [(cx - 78, cy - 9), (cx - 57, cy - 2)], TABBY_DARK, 2)
-    line(d, [(cx + 78, cy - 9), (cx + 57, cy - 2)], TABBY_DARK, 2)
+    d.pieslice((sc(cx - 76), sc(cy - 76), sc(cx + 76), sc(cy + 46)), 190, 350, fill=TABBY)
+    line(d, [(cx - 27, cy - 62), (cx - 18, cy - 31), (cx - 7, cy - 60)], TABBY_DARK, 4)
+    line(d, [(cx + 27, cy - 62), (cx + 18, cy - 31), (cx + 7, cy - 60)], TABBY_DARK, 4)
+    line(d, [(cx - 8, cy - 66), (cx, cy - 34), (cx + 8, cy - 66)], TABBY_DARK, 4)
+    line(d, [(cx - 79, cy - 13), (cx - 55, cy - 6)], TABBY_DARK, 3)
+    line(d, [(cx + 79, cy - 13), (cx + 55, cy - 6)], TABBY_DARK, 3)
 
 
 def draw_eye(d: ImageDraw.ImageDraw, cx: float, cy: float, side: int, blink: float) -> None:
@@ -87,9 +87,9 @@ def draw_eye(d: ImageDraw.ImageDraw, cx: float, cy: float, side: int, blink: flo
     if blink > 0.65:
         line(d, [(ex - 15, cy + 1), (ex - 5, cy + 6), (ex + 6, cy + 6), (ex + 15, cy + 1)], INK, 3)
         return
-    oval(d, ex - 16, cy - 21, ex + 16, cy + 20, EYE_DARK, INK, 2)
-    oval(d, ex - 10, cy - 11, ex + 10, cy + 17, EYE, None)
-    oval(d, ex - 9, cy - 16, ex + 1, cy - 7, WHITE, None)
+    oval(d, ex - 23, cy - 25, ex + 23, cy + 25, EYE_DARK, None)
+    oval(d, ex - 20, cy - 22, ex + 20, cy + 22, EYE, None)
+    oval(d, ex - 13, cy - 17, ex - 2, cy - 6, WHITE, None)
 
 
 def draw_head(d: ImageDraw.ImageDraw, cx: float, cy: float, blink: float, surprise: bool) -> None:
