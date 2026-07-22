@@ -140,16 +140,24 @@ struct PetStats {
 }
 
 final class CatView: NSView {
-    private let spriteLayer = CALayer()
     private let shadowLayer = CALayer()
-    private var frames: [PetMood: [NSImage]] = [:]
+    private let rigLayer = CALayer()
+    private let tailLayer = CALayer()
+    private let bodyLayer = CALayer()
+    private let haunchLayer = CALayer()
+    private let leftPawLayer = CALayer()
+    private let rightPawLayer = CALayer()
+    private let headLayer = CALayer()
     private var currentMood: PetMood = .idle
-    private var frameIndex = 0
-    private var animationTimer: Timer?
     private var settleTimer: Timer?
+    private var isWalking = false
     private var dragStartPoint: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
     private weak var controller: PetController?
+
+    private var partLayers: [CALayer] {
+        [tailLayer, haunchLayer, bodyLayer, leftPawLayer, rightPawLayer, headLayer]
+    }
 
     init(frame: NSRect, controller: PetController) {
         self.controller = controller
@@ -157,9 +165,8 @@ final class CatView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
         setupRenderLayers()
-        loadFrames()
+        loadRigParts()
         showMood(.idle)
-        startBreathing()
     }
 
     required init?(coder: NSCoder) {
@@ -168,8 +175,13 @@ final class CatView: NSView {
 
     override func layout() {
         super.layout()
-        let spriteFrame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.05)
-        spriteLayer.frame = spriteFrame
+        rigLayer.frame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.05)
+        configurePart(tailLayer, anchor: CGPoint(x: 0.43, y: 0.23))
+        configurePart(haunchLayer, anchor: CGPoint(x: 0.56, y: 0.19))
+        configurePart(bodyLayer, anchor: CGPoint(x: 0.56, y: 0.31))
+        configurePart(leftPawLayer, anchor: CGPoint(x: 0.48, y: 0.31))
+        configurePart(rightPawLayer, anchor: CGPoint(x: 0.69, y: 0.31))
+        configurePart(headLayer, anchor: CGPoint(x: 0.52, y: 0.39))
         shadowLayer.frame = NSRect(x: bounds.width * 0.24,
                                    y: bounds.height * 0.055,
                                    width: bounds.width * 0.52,
@@ -187,105 +199,97 @@ final class CatView: NSView {
         shadowLayer.masksToBounds = true
         rootLayer.addSublayer(shadowLayer)
 
-        spriteLayer.contentsGravity = .resizeAspect
-        spriteLayer.minificationFilter = .nearest
-        spriteLayer.magnificationFilter = .nearest
-        spriteLayer.anchorPoint = CGPoint(x: 0.5, y: 0.44)
-        spriteLayer.masksToBounds = false
-        rootLayer.addSublayer(spriteLayer)
+        rigLayer.masksToBounds = false
+        rootLayer.addSublayer(rigLayer)
+        for part in partLayers {
+            part.contentsGravity = .resizeAspect
+            part.minificationFilter = .linear
+            part.magnificationFilter = .linear
+            part.masksToBounds = false
+            rigLayer.addSublayer(part)
+        }
         needsLayout = true
     }
 
-    private func loadFrames() {
-        frames[.idle] = loadSequence(["normal"])
-        frames[.blink] = loadSequence((0...3).map { "blink\($0)" })
-        frames[.hop] = loadSequence((0...7).map { "hop\($0)" })
-        frames[.groom] = loadSequence((0...6).map { "groom\($0)" })
-        frames[.sleep] = loadSequence((0...1).map { "sleep\($0)" })
-        frames[.roll] = loadSequence(["roll045", "roll090", "roll135", "roll180", "roll225", "roll270", "roll315", "normal"])
+    private func configurePart(_ part: CALayer, anchor: CGPoint) {
+        part.bounds = rigLayer.bounds
+        part.anchorPoint = anchor
+        part.position = CGPoint(x: rigLayer.bounds.width * anchor.x,
+                                y: rigLayer.bounds.height * anchor.y)
     }
 
-    private func loadSequence(_ names: [String]) -> [NSImage] {
-        names.compactMap { name in
-            guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
-                return nil
-            }
-            return NSImage(contentsOf: url)
+    private func loadRigParts() {
+        let resources: [(CALayer, String)] = [
+            (tailLayer, "rig_tail"),
+            (bodyLayer, "rig_body"),
+            (haunchLayer, "rig_haunches"),
+            (leftPawLayer, "rig_paw_left"),
+            (rightPawLayer, "rig_paw_right"),
+            (headLayer, "rig_head")
+        ]
+        for (part, name) in resources {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+                  let image = NSImage(contentsOf: url) else { continue }
+            part.contents = image
         }
     }
 
     private func showMood(_ mood: PetMood) {
         currentMood = mood
-        frameIndex = 0
-        spriteLayer.contents = frames[mood]?.first ?? frames[.idle]?.first
         clearActionMotion()
+        if mood == .idle {
+            startIdleMotion()
+        }
     }
 
     func play(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
-        animationTimer?.invalidate()
         settleTimer?.invalidate()
-        let sequence = frames[mood] ?? []
-        guard !sequence.isEmpty else {
-            showMood(.idle)
-            return
-        }
-
         currentMood = mood
-        frameIndex = 0
-        var remainingFrames = max(1, loops) * sequence.count
-        applyActionMotion(for: mood,
-                          duration: frameDuration * Double(sequence.count) * Double(max(1, loops)))
-        animationTimer = Timer.scheduledTimer(withTimeInterval: frameDuration, repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
-            }
-
-            self.spriteLayer.contents = sequence[self.frameIndex % sequence.count]
-            self.frameIndex += 1
-            remainingFrames -= 1
-            if remainingFrames <= 0 {
-                timer.invalidate()
-                self.showMood(.idle)
-            }
+        isWalking = false
+        let actionFrames: [PetMood: Int] = [.blink: 4, .hop: 8, .groom: 7, .roll: 8]
+        let duration = frameDuration * Double(actionFrames[mood] ?? 5) * Double(max(1, loops))
+        applyActionMotion(for: mood, duration: duration)
+        settleTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+            self?.showMood(.idle)
         }
     }
 
     func startSleepLoop() {
-        animationTimer?.invalidate()
-        showMood(.sleep)
+        settleTimer?.invalidate()
+        currentMood = .sleep
+        isWalking = false
+        clearActionMotion()
         applySleepMotion()
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.72, repeats: true) { [weak self] _ in
-            guard let self, let sequence = self.frames[.sleep], !sequence.isEmpty else { return }
-            self.spriteLayer.contents = sequence[self.frameIndex % sequence.count]
-            self.frameIndex += 1
-        }
         settleTimer = Timer.scheduledTimer(withTimeInterval: 18, repeats: false) { [weak self] _ in
             self?.showMood(.idle)
         }
     }
 
     private func clearActionMotion() {
-        spriteLayer.removeAnimation(forKey: "actionLift")
-        spriteLayer.removeAnimation(forKey: "actionLean")
-        spriteLayer.removeAnimation(forKey: "actionScaleX")
-        spriteLayer.removeAnimation(forKey: "actionScaleY")
-        spriteLayer.removeAnimation(forKey: "sleepSway")
-        shadowLayer.removeAnimation(forKey: "actionShadowScale")
-        shadowLayer.removeAnimation(forKey: "actionShadowOpacity")
+        rigLayer.removeAllAnimations()
+        shadowLayer.removeAllAnimations()
+        partLayers.forEach { $0.removeAllAnimations() }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        rigLayer.transform = CATransform3DIdentity
+        partLayers.forEach { $0.transform = CATransform3DIdentity }
+        shadowLayer.opacity = 0.7
+        CATransaction.commit()
     }
 
     private func keyframe(_ keyPath: String,
                           values: [CGFloat],
                           duration: TimeInterval,
                           keyTimes: [NSNumber]? = nil,
-                          additive: Bool = true) -> CAKeyframeAnimation {
+                          additive: Bool = true,
+                          repeatCount: Float = 0) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: keyPath)
         animation.values = values
         animation.keyTimes = keyTimes
         animation.duration = duration
         animation.isAdditive = additive
         animation.calculationMode = .cubic
+        animation.repeatCount = repeatCount
         animation.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut),
                                           count: max(1, values.count - 1))
         return animation
@@ -298,90 +302,133 @@ final class CatView: NSView {
         case .idle:
             break
         case .blink:
-            addScalePulse(x: [1.0, 1.015, 1.0],
-                          y: [1.0, 0.965, 1.0],
-                          duration: total)
+            add(headLayer, "transform.scale.y", [1.0, 0.94, 1.0], total, additive: false)
+            add(headLayer, "transform.rotation.z", [0, -0.025, 0], total)
+            add(leftPawLayer, "transform.rotation.z", [0, 0.035, 0], total)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.035, 0], total)
         case .hop:
             let lift = max(18, bounds.height * 0.18)
-            spriteLayer.add(keyframe("transform.translation.y",
-                                     values: [0, lift * 0.72, lift, lift * 0.48, -lift * 0.08, 0],
-                                     duration: total,
-                                     keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1]),
-                            forKey: "actionLift")
-            spriteLayer.add(keyframe("transform.rotation.z",
-                                     values: [0, -0.08, 0.06, -0.035, 0.02, 0],
-                                     duration: total,
-                                     keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1]),
-                            forKey: "actionLean")
-            spriteLayer.add(keyframe("transform.scale.y",
-                                     values: [1.0, 0.93, 1.06, 1.02, 0.9, 1.0],
-                                     duration: total,
-                                     keyTimes: [0, 0.14, 0.36, 0.62, 0.82, 1],
-                                     additive: false),
-                            forKey: "actionScaleY")
-            spriteLayer.add(keyframe("transform.scale.x",
-                                     values: [1.0, 1.06, 0.96, 0.98, 1.09, 1.0],
-                                     duration: total,
-                                     keyTimes: [0, 0.14, 0.36, 0.62, 0.82, 1],
-                                     additive: false),
-                            forKey: "actionScaleX")
+            let times: [NSNumber] = [0, 0.14, 0.36, 0.62, 0.82, 1]
+            add(rigLayer, "transform.translation.y", [0, -lift * 0.08, lift, lift * 0.62, -lift * 0.06, 0], total, times)
+            add(bodyLayer, "transform.scale.y", [1, 0.91, 1.07, 1.02, 0.9, 1], total, times, additive: false)
+            add(haunchLayer, "transform.scale.x", [1, 1.08, 0.95, 0.98, 1.1, 1], total, times, additive: false)
+            add(headLayer, "transform.translation.y", [0, -5, -10, 4, 2, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, -0.05, 0.04, -0.025, 0.018, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, -0.12, 0.3, 0.24, -0.08, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, 0.12, -0.3, -0.24, 0.08, 0], total, times)
+            add(leftPawLayer, "transform.translation.y", [0, -2, 15, 12, -4, 0], total, times)
+            add(rightPawLayer, "transform.translation.y", [0, -2, 15, 12, -4, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.16, 0.34, -0.24, 0.14, 0], total, times)
             addShadowPulse(scale: [1.05, 0.76, 0.66, 0.82, 1.22, 1.0],
                            opacity: [0.72, 0.42, 0.34, 0.48, 0.86, 0.7],
                            duration: total,
-                           keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1])
+                           keyTimes: times)
         case .groom:
-            spriteLayer.add(keyframe("transform.rotation.z",
-                                     values: [0, -0.09, 0.055, -0.075, 0.04, 0],
-                                     duration: total),
-                            forKey: "actionLean")
-            spriteLayer.add(keyframe("transform.translation.y",
-                                     values: [0, -bounds.height * 0.012, bounds.height * 0.02, -bounds.height * 0.01, 0],
-                                     duration: total),
-                            forKey: "actionLift")
-            addScalePulse(x: [1.0, 1.035, 0.985, 1.02, 1.0],
-                          y: [1.0, 0.985, 1.025, 0.99, 1.0],
-                          duration: total)
+            let times: [NSNumber] = [0, 0.18, 0.36, 0.54, 0.72, 0.9, 1]
+            add(leftPawLayer, "transform.translation.y", [0, 45, 58, 48, 60, 42, 0], total, times)
+            add(leftPawLayer, "transform.translation.x", [0, -7, -13, -4, -14, -5, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, -0.42, -0.58, -0.36, -0.6, -0.3, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, 0.08, 0.13, 0.05, 0.14, 0.06, 0], total, times)
+            add(headLayer, "transform.translation.x", [0, -2, -5, -1, -5, -2, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, 0.04, 0.02, 0.05, 0.02, 0.03, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, 0.12, -0.08, 0.14, -0.06, 0.1, 0], total, times)
         case .sleep:
             applySleepMotion()
         case .roll:
-            spriteLayer.add(keyframe("transform.rotation.z",
-                                     values: [0, 0.75, 1.55, 2.45, 3.25, 4.15, 5.15, 6.28],
-                                     duration: total,
-                                     keyTimes: [0, 0.13, 0.27, 0.42, 0.58, 0.73, 0.88, 1]),
-                            forKey: "actionLean")
-            spriteLayer.add(keyframe("transform.translation.y",
-                                     values: [0, bounds.height * 0.05, bounds.height * 0.025, -bounds.height * 0.018, 0],
-                                     duration: total),
-                            forKey: "actionLift")
+            let times: [NSNumber] = [0, 0.13, 0.27, 0.42, 0.58, 0.73, 0.88, 1]
+            add(rigLayer, "transform.rotation.z", [0, 0.75, 1.55, 2.45, 3.25, 4.15, 5.15, 6.28], total, times)
+            add(rigLayer, "transform.translation.y", [0, 16, 24, 12, -5, 8, 14, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, 0.38, 0.48, 0.4, 0.32, 0.22, 0.1, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.38, -0.48, -0.4, -0.32, -0.22, -0.1, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.3, -0.45, -0.2, 0.2, 0.42, 0.2, 0], total, times)
+            add(headLayer, "transform.scale", [1, 0.96, 0.93, 0.94, 0.96, 0.98, 1.01, 1], total, times, additive: false)
             addShadowPulse(scale: [1.0, 0.9, 1.12, 0.94, 1.0],
                            opacity: [0.7, 0.48, 0.78, 0.58, 0.7],
                            duration: total)
         }
     }
 
+    private func add(_ target: CALayer,
+                     _ keyPath: String,
+                     _ values: [CGFloat],
+                     _ duration: TimeInterval,
+                     _ keyTimes: [NSNumber]? = nil,
+                     additive: Bool = true,
+                     repeatCount: Float = 0,
+                     key: String? = nil) {
+        target.add(keyframe(keyPath,
+                            values: values,
+                            duration: duration,
+                            keyTimes: keyTimes,
+                            additive: additive,
+                            repeatCount: repeatCount),
+                   forKey: key ?? keyPath)
+    }
+
     private func applySleepMotion() {
         clearActionMotion()
-        let duration: TimeInterval = 2.8
-        let sleepScale = keyframe("transform.scale.y",
-                                  values: [1.0, 1.028, 1.0],
-                                  duration: duration,
-                                  additive: false)
-        sleepScale.repeatCount = .infinity
-        spriteLayer.add(sleepScale, forKey: "actionScaleY")
-        let sway = keyframe("transform.rotation.z", values: [-0.012, 0.012, -0.012], duration: duration)
-        sway.repeatCount = .infinity
-        spriteLayer.add(sway, forKey: "sleepSway")
+        let duration: TimeInterval = 2.9
+        add(rigLayer, "transform.translation.y", [0, -7, -7], 0.45, additive: true)
+        add(bodyLayer, "transform.scale.y", [0.96, 0.985, 0.96], duration, additive: false, repeatCount: .infinity)
+        add(haunchLayer, "transform.scale.x", [1.04, 1.08, 1.04], duration, additive: false, repeatCount: .infinity)
+        add(headLayer, "transform.rotation.z", [-0.08, -0.055, -0.08], duration, repeatCount: .infinity)
+        add(headLayer, "transform.translation.y", [-5, -2, -5], duration, repeatCount: .infinity)
+        add(leftPawLayer, "transform.rotation.z", [0.12, 0.15, 0.12], duration, repeatCount: .infinity)
+        add(rightPawLayer, "transform.rotation.z", [-0.12, -0.15, -0.12], duration, repeatCount: .infinity)
+        add(tailLayer, "transform.rotation.z", [-0.28, -0.22, -0.28], duration, repeatCount: .infinity)
         addShadowPulse(scale: [1.0, 1.08, 1.0],
                        opacity: [0.62, 0.76, 0.62],
                        duration: duration,
                        repeatForever: true)
     }
 
-    private func addScalePulse(x: [CGFloat], y: [CGFloat], duration: TimeInterval) {
-        spriteLayer.add(keyframe("transform.scale.x", values: x, duration: duration, additive: false),
-                        forKey: "actionScaleX")
-        spriteLayer.add(keyframe("transform.scale.y", values: y, duration: duration, additive: false),
-                        forKey: "actionScaleY")
+    private func startIdleMotion() {
+        add(bodyLayer, "transform.scale.y", [0.995, 1.018, 0.995], 2.5,
+            additive: false, repeatCount: .infinity, key: "idleBreath")
+        add(headLayer, "transform.rotation.z", [-0.012, 0.014, -0.012], 3.4,
+            repeatCount: .infinity, key: "idleHead")
+        add(tailLayer, "transform.rotation.z", [-0.08, 0.12, -0.08], 2.2,
+            repeatCount: .infinity, key: "idleTail")
+        addShadowPulse(scale: [0.97, 1.03, 0.97],
+                       opacity: [0.64, 0.72, 0.64],
+                       duration: 2.5,
+                       repeatForever: true)
+    }
+
+    private func startWalkCycle() {
+        guard !isWalking, currentMood == .idle else { return }
+        clearActionMotion()
+        isWalking = true
+        let forever = Float.infinity
+        add(leftPawLayer, "transform.rotation.z", [-0.17, 0.16, -0.17], 0.48,
+            repeatCount: forever, key: "walkLeftRotation")
+        add(leftPawLayer, "transform.translation.y", [0, 8, 0], 0.48,
+            repeatCount: forever, key: "walkLeftLift")
+        add(rightPawLayer, "transform.rotation.z", [0.16, -0.17, 0.16], 0.48,
+            repeatCount: forever, key: "walkRightRotation")
+        add(rightPawLayer, "transform.translation.y", [8, 0, 8], 0.48,
+            repeatCount: forever, key: "walkRightLift")
+        add(bodyLayer, "transform.translation.y", [0, 3.5, 0], 0.24,
+            repeatCount: forever, key: "walkBody")
+        add(haunchLayer, "transform.rotation.z", [-0.025, 0.025, -0.025], 0.48,
+            repeatCount: forever, key: "walkHaunch")
+        add(headLayer, "transform.translation.y", [1, -2, 1], 0.48,
+            repeatCount: forever, key: "walkHeadBob")
+        add(headLayer, "transform.rotation.z", [-0.018, 0.018, -0.018], 0.48,
+            repeatCount: forever, key: "walkHeadTilt")
+        add(tailLayer, "transform.rotation.z", [-0.2, 0.22, -0.2], 0.78,
+            repeatCount: forever, key: "walkTail")
+        addShadowPulse(scale: [0.94, 1.04, 0.94],
+                       opacity: [0.62, 0.74, 0.62],
+                       duration: 0.48,
+                       repeatForever: true)
+    }
+
+    private func stopWalkCycle() {
+        guard isWalking else { return }
+        isWalking = false
+        clearActionMotion()
+        startIdleMotion()
     }
 
     private func addShadowPulse(scale: [CGFloat],
@@ -407,35 +454,14 @@ final class CatView: NSView {
         shadowLayer.add(shadowOpacity, forKey: "actionShadowOpacity")
     }
 
-    func startBreathing() {
-        let breath = CABasicAnimation(keyPath: "transform.scale")
-        breath.fromValue = 0.995
-        breath.toValue = 1.025
-        breath.duration = 2.2
-        breath.autoreverses = true
-        breath.repeatCount = .infinity
-        breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        spriteLayer.add(breath, forKey: "breath")
-
-        let float = CABasicAnimation(keyPath: "position.y")
-        float.byValue = bounds.height * 0.018
-        float.duration = 2.2
-        float.autoreverses = true
-        float.repeatCount = .infinity
-        float.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        spriteLayer.add(float, forKey: "float")
-
-        let shadowPulse = CABasicAnimation(keyPath: "transform.scale.x")
-        shadowPulse.fromValue = 0.92
-        shadowPulse.toValue = 1.08
-        shadowPulse.duration = 2.2
-        shadowPulse.autoreverses = true
-        shadowPulse.repeatCount = .infinity
-        shadowPulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        shadowLayer.add(shadowPulse, forKey: "shadowPulse")
-    }
-
     func setMotionTilt(dx: CGFloat, dy: CGFloat) {
+        guard currentMood == .idle else { return }
+        let moving = hypot(dx, dy) > 0.5
+        if moving {
+            startWalkCycle()
+        } else {
+            stopWalkCycle()
+        }
         let limitedX = max(-1.0, min(1.0, dx / 4.0))
         let limitedY = max(-1.0, min(1.0, dy / 4.0))
         var transform = CATransform3DIdentity
@@ -447,7 +473,7 @@ final class CatView: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.18)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
-        spriteLayer.transform = transform
+        rigLayer.transform = transform
         shadowLayer.opacity = Float(0.55 + min(0.22, abs(limitedX) * 0.16 + abs(limitedY) * 0.08))
         CATransaction.commit()
     }
@@ -463,7 +489,7 @@ final class CatView: NSView {
             CAMediaTimingFunction(name: .easeOut),
             CAMediaTimingFunction(name: .easeInEaseOut)
         ]
-        spriteLayer.add(squash, forKey: "bounce")
+        rigLayer.add(squash, forKey: "bounce")
     }
 
     override func mouseDown(with event: NSEvent) {

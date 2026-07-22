@@ -11,6 +11,8 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SOURCE_FILE="$ROOT_DIR/Sources/TianMiao/main.swift"
 
+"$PYTHON_BIN" "$ROOT_DIR/scripts/generate_rig_parts.py"
+
 mkdir -p "$BUILD_ROOT" "$ROOT_DIR/build"
 
 clean_app_metadata() {
@@ -65,9 +67,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>3.6</string>
+  <string>3.7</string>
   <key>CFBundleVersion</key>
-  <string>38</string>
+  <string>39</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>
