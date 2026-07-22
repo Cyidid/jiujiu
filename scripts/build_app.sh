@@ -3,13 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-APP_DIR="$ROOT_DIR/啾啾.app"
-BUILD_ROOT="${TMPDIR:-/tmp}/jiujiu-build.$$"
-BUILD_APP_DIR="$BUILD_ROOT/啾啾.app"
+APP_DIR="$ROOT_DIR/甜喵物语.app"
+BUILD_ROOT="${TMPDIR:-/tmp}/tianmiao-build.$$"
+BUILD_APP_DIR="$BUILD_ROOT/甜喵物语.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-SOURCE_FILE="$ROOT_DIR/Sources/Jiujiu/main.swift"
+SOURCE_FILE="$ROOT_DIR/Sources/TianMiao/main.swift"
 
 mkdir -p "$BUILD_ROOT" "$ROOT_DIR/build"
 
@@ -35,7 +35,7 @@ swiftc "$SOURCE_FILE" \
   -framework Cocoa \
   -framework QuartzCore \
   -framework UserNotifications \
-  -o "$MACOS_DIR/jiujiu"
+  -o "$MACOS_DIR/tianmiao"
 
 find "$RESOURCES_DIR" -type f -name '*.png' -delete
 find "$RESOURCES_DIR" -type f -name '*.icns' -delete
@@ -53,21 +53,21 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>啾啾</string>
+  <string>甜喵物语</string>
   <key>CFBundleExecutable</key>
-  <string>jiujiu</string>
+  <string>tianmiao</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>com.jiujiu.catpet21</string>
   <key>CFBundleName</key>
-  <string>啾啾</string>
+  <string>甜喵物语</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>3.5</string>
+  <string>3.6</string>
   <key>CFBundleVersion</key>
-  <string>37</string>
+  <string>38</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>
@@ -84,12 +84,12 @@ clean_app_metadata "$APP_DIR"
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
 codesign --verify --deep --strict "$APP_DIR"
 
-if [ -d "$ROOT_DIR/啾啾.app" ]; then
-  mv "$ROOT_DIR/啾啾.app" "$ROOT_DIR/build/啾啾.app.previous.$$"
+if [ -d "$ROOT_DIR/甜喵物语.app" ]; then
+  mv "$ROOT_DIR/甜喵物语.app" "$ROOT_DIR/build/甜喵物语.app.previous.$$"
 fi
-COPYFILE_DISABLE=1 ditto --norsrc "$APP_DIR" "$ROOT_DIR/啾啾.app"
+COPYFILE_DISABLE=1 ditto --norsrc "$APP_DIR" "$ROOT_DIR/甜喵物语.app"
 
-APP_DIR="$ROOT_DIR/啾啾.app"
+APP_DIR="$ROOT_DIR/甜喵物语.app"
 clean_app_metadata "$APP_DIR"
 echo "Built $APP_DIR"
 rm -rf "$BUILD_ROOT"

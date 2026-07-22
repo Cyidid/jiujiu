@@ -501,7 +501,7 @@ final class CatView: NSView {
     }
 }
 
-final class JiujiuWindow: NSWindow {
+final class TianMiaoWindow: NSWindow {
     override var canBecomeKey: Bool { true }
 
     init(contentRect: NSRect) {
@@ -569,7 +569,7 @@ final class BubbleWindow: NSWindow {
 }
 
 final class PetController: NSObject {
-    private(set) var window: JiujiuWindow!
+    private(set) var window: TianMiaoWindow!
     private(set) var catView: CatView!
     private let bubbleWindow = BubbleWindow()
     private var movementTimer: Timer?
@@ -584,7 +584,7 @@ final class PetController: NSObject {
 
     func start() {
         let size = currentSize()
-        window = JiujiuWindow(contentRect: NSRect(origin: initialOrigin(size: size), size: size))
+        window = TianMiaoWindow(contentRect: NSRect(origin: initialOrigin(size: size), size: size))
         window.level = settings.alwaysOnTop ? .floating : .normal
         catView = CatView(frame: NSRect(origin: .zero, size: size), controller: self)
         window.contentView = catView
@@ -599,7 +599,7 @@ final class PetController: NSObject {
         startAmbientBehaviors()
         startGentleReminders()
         startNeedsDecay()
-        showBubble("啾啾来了，\(stats.moodLine)")
+        showBubble("甜喵来啦，\(stats.moodLine)")
     }
 
     func makeMenu() -> NSMenu {
@@ -635,7 +635,7 @@ final class PetController: NSObject {
         menu.addItem(item("勿扰模式", action: #selector(toggleDoNotDisturb), checked: settings.doNotDisturb))
         menu.addItem(NSMenuItem(title: "开始 25 分钟专注", action: #selector(startFocus), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "退出啾啾", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "退出甜喵物语", action: #selector(quit), keyEquivalent: "q"))
         for menuItem in menu.items where menuItem.action != nil && menuItem.target == nil {
             menuItem.target = self
         }
@@ -700,7 +700,7 @@ final class PetController: NSObject {
                 self.showBubble("有点饿，想吃小鱼干")
             } else if self.stats.energy < 24 {
                 self.catView.startSleepLoop()
-                self.showBubble("啾啾困了")
+                self.showBubble("甜喵困了")
             } else if self.stats.happiness < 28 {
                 self.showBubble("想被陪一下")
             }
@@ -799,10 +799,10 @@ final class PetController: NSObject {
     private func showReminder(_ message: String) {
         guard settings.remindersEnabled, !settings.doNotDisturb else { return }
         let content = UNMutableNotificationContent()
-        content.title = "啾啾"
+        content.title = "甜喵物语"
         content.body = message
         content.sound = .default
-        let request = UNNotificationRequest(identifier: "jiujiu-break-\(Date().timeIntervalSince1970)",
+        let request = UNNotificationRequest(identifier: "tianmiao-break-\(Date().timeIntervalSince1970)",
                                             content: content,
                                             trigger: nil)
         UNUserNotificationCenter.current().add(request)
