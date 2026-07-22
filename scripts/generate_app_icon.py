@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
-RESOURCES = ROOT / "additional/Applications/啾啾.app/Contents/Resources"
+RESOURCES = ROOT / "Resources"
 SOURCE = RESOURCES / "normal.png"
 ICONSET = ROOT / "build/AppIcon.iconset"
 OUT_PNG = ROOT / "build/AppIcon-1024.png"

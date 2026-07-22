@@ -1,3 +1,4 @@
 build/
 dist/
 *.log
+/啾啾.app/

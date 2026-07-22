@@ -173,7 +173,7 @@ def save_sequence(out: Path, names: list[str], mood: str) -> None:
 
 
 def main() -> int:
-    out = Path("additional/Applications/啾啾.app/Contents/Resources")
+    out = Path("Resources")
     out.mkdir(parents=True, exist_ok=True)
     make_frame().save(out / "normal.png")
     save_sequence(out, [f"blink{i}.png" for i in range(4)], "blink")

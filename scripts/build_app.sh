@@ -39,11 +39,11 @@ swiftc "$SOURCE_FILE" \
 
 find "$RESOURCES_DIR" -type f -name '*.png' -delete
 find "$RESOURCES_DIR" -type f -name '*.icns' -delete
-for sprite in "$ROOT_DIR/additional/Applications/啾啾.app/Contents/Resources/"*.png; do
+for sprite in "$ROOT_DIR/Resources/"*.png; do
   COPYFILE_DISABLE=1 ditto --norsrc "$sprite" "$RESOURCES_DIR/$(basename "$sprite")"
 done
 COPYFILE_DISABLE=1 ditto --norsrc \
-  "$ROOT_DIR/additional/Applications/啾啾.app/Contents/Resources/AppIcon.icns" \
+  "$ROOT_DIR/Resources/AppIcon.icns" \
   "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'

@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 CANVAS = (360, 392)
-OUT = Path("additional/Applications/啾啾.app/Contents/Resources")
+OUT = Path("Resources")
 SOURCES = {
     "front": Path("assets/source/multiview/sit-front.png"),
     "round": Path("assets/source/multiview/sit-round.png"),

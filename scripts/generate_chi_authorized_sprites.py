@@ -151,7 +151,7 @@ def save(out: Path, name: str, **kwargs) -> None:
 
 
 def main() -> int:
-    out = Path("additional/Applications/啾啾.app/Contents/Resources")
+    out = Path("Resources")
     out.mkdir(parents=True, exist_ok=True)
     save(out, "normal.png")
     for i, blink in enumerate([0, 0.75, 1, 0]):

@@ -18,7 +18,7 @@
 
 ## 素材说明
 
-`additional/Documents/啾啾_设计素材/原始设计稿.png` 是 2048x2048 白底图，没有透明通道，不适合直接作为桌宠运行素材。当前应用使用 `additional/Applications/啾啾.app/Contents/Resources` 下重新生成的灰白虎斑幼猫逐帧 PNG。`scripts/generate_chi_authorized_sprites.py` 可重新生成当前授权参考版素材。
+当前应用使用 `Resources/` 下的 `360x392` 透明逐帧 PNG 和 `AppIcon.icns`。多角度动漫源图保存在 `assets/source/multiview/`，`scripts/generate_anime_source_sprites.py` 可重新生成当前桌宠帧，`scripts/generate_app_icon.py` 可根据当前 `normal.png` 重新生成应用图标。
 - 轻提醒：保留桌宠作为温和提醒媒介的思路，每 45 分钟提醒休息喝水，可开启勿扰模式。
 - 专注陪伴：可以让啾啾进入角落休息，并启动 25 分钟专注计时。
 
@@ -30,10 +30,11 @@
 ./scripts/build_app.sh
 ```
 
-构建结果会更新仓库根目录的 `啾啾.app`。
+构建结果会生成本地 `啾啾.app`。该目录是构建产物，不提交到仓库；发布版请从 GitHub Releases 下载 zip。
 
 ## 文件结构
 
 - `Sources/Jiujiu/main.swift`: 当前可维护源码。
-- `啾啾.app`: 已构建的 macOS 应用包。
-- `additional/`: 之前从本机归档的相关素材、旧 app、偏好文件和生成过程文件。
+- `Resources/`: 应用运行时使用的图片帧和 `AppIcon.icns`。
+- `assets/source/multiview/`: 多角度动漫源图。
+- `scripts/`: 构建、素材生成和图标生成脚本。
