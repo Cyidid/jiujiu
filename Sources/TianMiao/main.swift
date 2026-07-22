@@ -159,6 +159,10 @@ final class CatView: NSView {
     private let leftPawLayer = CALayer()
     private let rightPawLayer = CALayer()
     private let headLayer = CALayer()
+    private let leftBlinkLayer = CALayer()
+    private let rightBlinkLayer = CALayer()
+    private let leftBlinkLine = CAShapeLayer()
+    private let rightBlinkLine = CAShapeLayer()
     private let walkTailLayer = CALayer()
     private let walkRearLegLayer = CALayer()
     private let walkHindLegLayer = CALayer()
@@ -214,6 +218,10 @@ final class CatView: NSView {
         configurePart(leftPawLayer, anchor: CGPoint(x: 0.48, y: 0.31))
         configurePart(rightPawLayer, anchor: CGPoint(x: 0.69, y: 0.31))
         configurePart(headLayer, anchor: CGPoint(x: 0.52, y: 0.39))
+        configureBlinkLayer(leftBlinkLayer, line: leftBlinkLine,
+                            sourceRect: CGRect(x: 128, y: 151, width: 62, height: 64))
+        configureBlinkLayer(rightBlinkLayer, line: rightBlinkLine,
+                            sourceRect: CGRect(x: 202, y: 105, width: 68, height: 68))
         configurePart(walkTailLayer, anchor: CGPoint(x: 0.23, y: 0.37))
         configurePart(walkRearLegLayer, anchor: CGPoint(x: 0.29, y: 0.30))
         configurePart(walkHindLegLayer, anchor: CGPoint(x: 0.45, y: 0.30))
@@ -247,7 +255,41 @@ final class CatView: NSView {
             part.masksToBounds = false
             rigLayer.addSublayer(part)
         }
+        setupBlinkLayer(leftBlinkLayer, line: leftBlinkLine)
+        setupBlinkLayer(rightBlinkLayer, line: rightBlinkLine)
         needsLayout = true
+    }
+
+    private func setupBlinkLayer(_ eyelid: CALayer, line: CAShapeLayer) {
+        eyelid.backgroundColor = NSColor(calibratedWhite: 0.92, alpha: 1).cgColor
+        eyelid.borderColor = NSColor(calibratedWhite: 0.14, alpha: 1).cgColor
+        eyelid.borderWidth = 1.1
+        eyelid.opacity = 0
+        line.fillColor = NSColor.clear.cgColor
+        line.strokeColor = NSColor(calibratedWhite: 0.14, alpha: 1).cgColor
+        line.lineCap = .round
+        eyelid.addSublayer(line)
+        headLayer.addSublayer(eyelid)
+    }
+
+    private func configureBlinkLayer(_ eyelid: CALayer, line: CAShapeLayer, sourceRect: CGRect) {
+        let sourceSize = CGSize(width: 360, height: 392)
+        let scale = min(headLayer.bounds.width / sourceSize.width,
+                        headLayer.bounds.height / sourceSize.height)
+        let offsetX = (headLayer.bounds.width - sourceSize.width * scale) / 2
+        let offsetY = (headLayer.bounds.height - sourceSize.height * scale) / 2
+        eyelid.frame = CGRect(x: offsetX + sourceRect.minX * scale,
+                              y: offsetY + (sourceSize.height - sourceRect.maxY) * scale,
+                              width: sourceRect.width * scale,
+                              height: sourceRect.height * scale)
+        eyelid.cornerRadius = eyelid.bounds.height / 2
+        line.frame = eyelid.bounds
+        line.lineWidth = max(0.8, scale * 2.5)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: eyelid.bounds.width * 0.16, y: eyelid.bounds.midY * 0.98))
+        path.addQuadCurve(to: CGPoint(x: eyelid.bounds.width * 0.84, y: eyelid.bounds.midY * 0.98),
+                          control: CGPoint(x: eyelid.bounds.midX, y: eyelid.bounds.midY * 0.72))
+        line.path = path
     }
 
     private func configurePart(_ part: CALayer, anchor: CGPoint) {
@@ -352,12 +394,16 @@ final class CatView: NSView {
         rigLayer.removeAllAnimations()
         shadowLayer.removeAllAnimations()
         partLayers.forEach { $0.removeAllAnimations() }
+        leftBlinkLayer.removeAllAnimations()
+        rightBlinkLayer.removeAllAnimations()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         rigLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
         headLayer.transform = CATransform3DMakeRotation(-0.18, 0, 0, 1)
         walkHeadLayer.transform = CATransform3DIdentity
+        leftBlinkLayer.opacity = 0
+        rightBlinkLayer.opacity = 0
         shadowLayer.opacity = 0.7
         CATransaction.commit()
         setWalkingPose(false)
@@ -388,71 +434,77 @@ final class CatView: NSView {
         case .idle:
             break
         case .blink:
-            add(headLayer, "transform.scale.y", [1.0, 0.94, 1.0], total, additive: false)
-            add(headLayer, "transform.rotation.z", [0, -0.025, 0], total)
-            add(leftPawLayer, "transform.rotation.z", [0, 0.035, 0], total)
-            add(rightPawLayer, "transform.rotation.z", [0, -0.035, 0], total)
+            let times: [NSNumber] = [0, 0.32, 0.48, 0.64, 1]
+            let blinkTimes: [NSNumber] = [0, 0.26, 0.38, 0.56, 0.7, 1]
+            add(leftBlinkLayer, "opacity", [0, 0, 1, 1, 0, 0], total, blinkTimes,
+                additive: false, key: "leftBlink")
+            add(rightBlinkLayer, "opacity", [0, 0, 1, 1, 0, 0], total, blinkTimes,
+                additive: false, key: "rightBlink")
+            add(headLayer, "transform.translation.y", [0, 0, -0.8, 0, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, 0.008, 0.014, 0.008, 0], total, times)
         case .react:
             break
         case .hop:
-            let lift = max(18, bounds.height * 0.18)
-            let times: [NSNumber] = [0, 0.14, 0.36, 0.62, 0.82, 1]
-            add(rigLayer, "transform.translation.y", [0, -lift * 0.08, lift, lift * 0.62, -lift * 0.06, 0], total, times)
-            add(bodyLayer, "transform.scale.y", [1, 0.91, 1.07, 1.02, 0.9, 1], total, times, additive: false)
-            add(haunchLayer, "transform.scale.x", [1, 1.08, 0.95, 0.98, 1.1, 1], total, times, additive: false)
-            add(headLayer, "transform.translation.y", [0, -5, -10, 4, 2, 0], total, times)
-            add(headLayer, "transform.rotation.z", [0, -0.05, 0.04, -0.025, 0.018, 0], total, times)
-            add(leftPawLayer, "transform.rotation.z", [0, -0.12, 0.3, 0.24, -0.08, 0], total, times)
-            add(rightPawLayer, "transform.rotation.z", [0, 0.12, -0.3, -0.24, 0.08, 0], total, times)
-            add(leftPawLayer, "transform.translation.y", [0, -2, 15, 12, -4, 0], total, times)
-            add(rightPawLayer, "transform.translation.y", [0, -2, 15, 12, -4, 0], total, times)
-            add(tailLayer, "transform.rotation.z", [0, -0.16, 0.34, -0.24, 0.14, 0], total, times)
-            addShadowPulse(scale: [1.05, 0.76, 0.66, 0.82, 1.22, 1.0],
-                           opacity: [0.72, 0.42, 0.34, 0.48, 0.86, 0.7],
+            let lift = max(12, bounds.height * 0.13)
+            let times: [NSNumber] = [0, 0.16, 0.34, 0.58, 0.78, 1]
+            add(rigLayer, "transform.translation.y", [0, -2, lift, lift * 0.78, -1.5, 0], total, times)
+            add(bodyLayer, "transform.scale.y", [1, 0.94, 1.015, 1.005, 0.93, 1], total, times, additive: false)
+            add(haunchLayer, "transform.scale.x", [1, 1.06, 0.98, 0.99, 1.07, 1], total, times, additive: false)
+            add(headLayer, "transform.translation.y", [0, -1.5, -2.5, -1, 1.5, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, -0.025, 0.02, 0.012, -0.018, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, -0.06, 0.18, 0.14, -0.05, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, 0.06, -0.18, -0.14, 0.05, 0], total, times)
+            add(leftPawLayer, "transform.translation.y", [0, -1, 5, 4, -2, 0], total, times)
+            add(rightPawLayer, "transform.translation.y", [0, -1, 5, 4, -2, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.1, 0.2, 0.08, -0.08, 0], total, times)
+            addShadowPulse(scale: [1.04, 1.1, 0.72, 0.78, 1.14, 1],
+                           opacity: [0.72, 0.78, 0.38, 0.44, 0.82, 0.7],
                            duration: total,
                            keyTimes: times)
         case .groom:
-            let times: [NSNumber] = [0, 0.18, 0.36, 0.54, 0.72, 0.9, 1]
-            add(leftPawLayer, "transform.translation.y", [0, 45, 58, 48, 60, 42, 0], total, times)
-            add(leftPawLayer, "transform.translation.x", [0, -7, -13, -4, -14, -5, 0], total, times)
-            add(leftPawLayer, "transform.rotation.z", [0, -0.42, -0.58, -0.36, -0.6, -0.3, 0], total, times)
-            add(headLayer, "transform.rotation.z", [0, 0.08, 0.13, 0.05, 0.14, 0.06, 0], total, times)
-            add(headLayer, "transform.translation.x", [0, -2, -5, -1, -5, -2, 0], total, times)
-            add(rightPawLayer, "transform.rotation.z", [0, 0.04, 0.02, 0.05, 0.02, 0.03, 0], total, times)
-            add(tailLayer, "transform.rotation.z", [0, 0.12, -0.08, 0.14, -0.06, 0.1, 0], total, times)
+            let pawLift = max(11, bounds.height * 0.12)
+            let times: [NSNumber] = [0, 0.2, 0.38, 0.56, 0.74, 0.9, 1]
+            add(leftPawLayer, "transform.translation.y", [0, pawLift * 0.72, pawLift, pawLift * 0.78, pawLift, pawLift * 0.65, 0], total, times)
+            add(leftPawLayer, "transform.translation.x", [0, 1, -2, 1, -2, 0, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, -0.18, -0.25, -0.16, -0.25, -0.12, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, 0.035, 0.065, 0.035, 0.065, 0.025, 0], total, times)
+            add(headLayer, "transform.translation.x", [0, -1, -2, -1, -2, -1, 0], total, times)
+            add(rightPawLayer, "transform.scale.y", [1, 0.985, 0.98, 0.985, 0.98, 0.99, 1], total, times, additive: false)
+            add(bodyLayer, "transform.translation.x", [0, 1, 1.5, 1, 1.5, 0.5, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, 0.05, -0.035, 0.05, -0.035, 0.025, 0], total, times)
         case .scratch:
             let times: [NSNumber] = [0, 0.1, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.9, 1]
-            add(rigLayer, "transform.translation.y", [0, -3, -4, -4, -4, -4, -4, -3, -1, 0], total, times)
-            add(bodyLayer, "transform.scale.y", [1, 0.96, 0.95, 0.955, 0.95, 0.955, 0.95, 0.965, 0.985, 1],
+            add(rigLayer, "transform.translation.y", [0, -1, -1.5, -1.5, -1.5, -1.5, -1.5, -1, -0.5, 0], total, times)
+            add(bodyLayer, "transform.scale.y", [1, 0.985, 0.98, 0.985, 0.98, 0.985, 0.98, 0.987, 0.995, 1],
                 total, times, additive: false)
-            add(headLayer, "transform.translation.y", [0, -2, -4, -3, -4, -3, -4, -2, -1, 0], total, times)
-            add(headLayer, "transform.translation.x", [0, 0, -1, 1, -1, 1, -1, 0, 0, 0], total, times)
-            add(leftPawLayer, "transform.translation.y", [0, 2, -5, 4, -6, 4, -6, 3, 1, 0], total, times)
-            add(leftPawLayer, "transform.translation.x", [0, -2, 5, -4, 6, -4, 6, -3, 1, 0], total, times)
-            add(leftPawLayer, "transform.rotation.z", [0, -0.04, 0.13, -0.1, 0.15, -0.1, 0.14, -0.06, 0.02, 0], total, times)
-            add(rightPawLayer, "transform.translation.y", [0, -4, 3, -6, 4, -6, 4, -5, 1, 0], total, times)
-            add(rightPawLayer, "transform.translation.x", [0, -5, 4, -6, 4, -6, 4, -5, -1, 0], total, times)
-            add(rightPawLayer, "transform.rotation.z", [0, -0.12, 0.08, -0.15, 0.1, -0.15, 0.1, -0.12, -0.02, 0], total, times)
-            add(haunchLayer, "transform.scale.x", [1, 1.035, 1.04, 1.025, 1.04, 1.025, 1.04, 1.02, 1.01, 1],
-                total, times, additive: false)
-            add(tailLayer, "transform.rotation.z", [0, -0.08, 0.1, -0.12, 0.13, -0.12, 0.11, -0.07, 0.03, 0], total, times)
-            addShadowPulse(scale: [1, 1.05, 1.08, 1.04, 1.08, 1.04, 1.08, 1.04, 1.01, 1],
-                           opacity: [0.68, 0.73, 0.76, 0.72, 0.76, 0.72, 0.76, 0.72, 0.69, 0.68],
+            add(headLayer, "transform.translation.y", [0, -1, -2, -2, -2, -2, -2, -1, -0.5, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, -0.015, -0.025, -0.02, -0.025, -0.02, -0.025, -0.015, 0, 0], total, times)
+            add(leftPawLayer, "transform.translation.x", [0, -1, 0, -1, 0, -1, 0, -1, 0, 0], total, times)
+            add(leftPawLayer, "transform.scale.y", [1, 0.985, 0.98, 0.985, 0.98, 0.985, 0.98, 0.99, 1, 1], total, times, additive: false)
+            add(rightPawLayer, "transform.translation.y", [0, 3, -1, 4, -1, 4, -1, 3, 1, 0], total, times)
+            add(rightPawLayer, "transform.translation.x", [0, -3, 3, -4, 3, -4, 3, -3, 1, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.08, 0.07, -0.1, 0.08, -0.1, 0.08, -0.07, 0.02, 0], total, times)
+            add(haunchLayer, "transform.translation.x", [0, -0.5, -1, -1, -1, -1, -1, -0.5, 0, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.035, 0.05, -0.05, 0.055, -0.05, 0.05, -0.03, 0.01, 0], total, times)
+            addShadowPulse(scale: [1, 1.02, 1.035, 1.02, 1.035, 1.02, 1.035, 1.02, 1.01, 1],
+                           opacity: [0.68, 0.7, 0.72, 0.7, 0.72, 0.7, 0.72, 0.7, 0.69, 0.68],
                            duration: total,
                            keyTimes: times)
         case .sleep:
             applySleepMotion()
         case .roll:
             let times: [NSNumber] = [0, 0.13, 0.27, 0.42, 0.58, 0.73, 0.88, 1]
-            add(rigLayer, "transform.rotation.z", [0, 0.75, 1.55, 2.45, 3.25, 4.15, 5.15, 6.28], total, times)
-            add(rigLayer, "transform.translation.y", [0, 16, 24, 12, -5, 8, 14, 0], total, times)
-            add(leftPawLayer, "transform.rotation.z", [0, 0.38, 0.48, 0.4, 0.32, 0.22, 0.1, 0], total, times)
-            add(rightPawLayer, "transform.rotation.z", [0, -0.38, -0.48, -0.4, -0.32, -0.22, -0.1, 0], total, times)
-            add(tailLayer, "transform.rotation.z", [0, -0.3, -0.45, -0.2, 0.2, 0.42, 0.2, 0], total, times)
-            add(headLayer, "transform.scale", [1, 0.96, 0.93, 0.94, 0.96, 0.98, 1.01, 1], total, times, additive: false)
-            addShadowPulse(scale: [1.0, 0.9, 1.12, 0.94, 1.0],
-                           opacity: [0.7, 0.48, 0.78, 0.58, 0.7],
-                           duration: total)
+            add(rigLayer, "transform.rotation.z", [0, -0.22, -0.95, -1.9, -3.05, -4.15, -5.35, -6.28], total, times)
+            add(rigLayer, "transform.translation.x", [0, -2, -7, -10, -6, 2, 5, 0], total, times)
+            add(rigLayer, "transform.translation.y", [0, -3, 1, 5, 2, 5, 1, 0], total, times)
+            add(rigLayer, "transform.scale.y", [1, 0.91, 0.96, 1.01, 0.94, 1, 0.97, 1], total, times, additive: false)
+            add(leftPawLayer, "transform.rotation.z", [0, 0.2, 0.3, 0.32, 0.28, 0.2, 0.08, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.2, -0.3, -0.32, -0.28, -0.2, -0.08, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.18, -0.28, -0.2, 0.12, 0.24, 0.12, 0], total, times)
+            addShadowPulse(scale: [1, 1.08, 0.96, 0.9, 1.03, 0.94, 1.06, 1],
+                           opacity: [0.7, 0.78, 0.67, 0.61, 0.72, 0.64, 0.74, 0.7],
+                           duration: total,
+                           keyTimes: times)
         }
     }
 
@@ -476,16 +528,21 @@ final class CatView: NSView {
     private func applySleepMotion() {
         clearActionMotion()
         let duration: TimeInterval = 2.9
-        add(rigLayer, "transform.translation.y", [0, -7, -7], 0.45, additive: true)
-        add(bodyLayer, "transform.scale.y", [0.96, 0.985, 0.96], duration, additive: false, repeatCount: .infinity)
-        add(haunchLayer, "transform.scale.x", [1.04, 1.08, 1.04], duration, additive: false, repeatCount: .infinity)
-        add(headLayer, "transform.rotation.z", [-0.08, -0.055, -0.08], duration, repeatCount: .infinity)
-        add(headLayer, "transform.translation.y", [-5, -2, -5], duration, repeatCount: .infinity)
-        add(leftPawLayer, "transform.rotation.z", [0.12, 0.15, 0.12], duration, repeatCount: .infinity)
-        add(rightPawLayer, "transform.rotation.z", [-0.12, -0.15, -0.12], duration, repeatCount: .infinity)
-        add(tailLayer, "transform.rotation.z", [-0.28, -0.22, -0.28], duration, repeatCount: .infinity)
-        addShadowPulse(scale: [1.0, 1.08, 1.0],
-                       opacity: [0.62, 0.76, 0.62],
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        leftBlinkLayer.opacity = 1
+        rightBlinkLayer.opacity = 1
+        CATransaction.commit()
+        add(rigLayer, "transform.translation.y", [-3, -4, -3], duration, repeatCount: .infinity)
+        add(bodyLayer, "transform.scale.y", [0.97, 0.985, 0.97], duration, additive: false, repeatCount: .infinity)
+        add(haunchLayer, "transform.scale.x", [1.025, 1.045, 1.025], duration, additive: false, repeatCount: .infinity)
+        add(headLayer, "transform.rotation.z", [-0.07, -0.05, -0.07], duration, repeatCount: .infinity)
+        add(headLayer, "transform.translation.y", [-4, -2.5, -4], duration, repeatCount: .infinity)
+        add(leftPawLayer, "transform.rotation.z", [0.08, 0.1, 0.08], duration, repeatCount: .infinity)
+        add(rightPawLayer, "transform.rotation.z", [-0.08, -0.1, -0.08], duration, repeatCount: .infinity)
+        add(tailLayer, "transform.rotation.z", [-0.2, -0.16, -0.2], duration, repeatCount: .infinity)
+        addShadowPulse(scale: [1.04, 1.08, 1.04],
+                       opacity: [0.72, 0.76, 0.72],
                        duration: duration,
                        repeatForever: true)
     }
@@ -639,8 +696,7 @@ final class CatView: NSView {
         let transform = CATransform3DMakeScale(limitedX < 0 ? -1 : 1, 1, 1)
 
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.18)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setDisableActions(true)
         rigLayer.transform = transform
         shadowLayer.opacity = Float(0.6 + min(0.12, abs(limitedX) * 0.1))
         CATransaction.commit()
@@ -686,8 +742,16 @@ final class CatView: NSView {
         reactToClick(at: NSPoint(x: bounds.midX * 0.72, y: bounds.midY))
     }
 
-    func runScratchPreview() {
-        play(.scratch, frameDuration: 0.11, loops: 1)
+    func runActionPreview(named name: String) {
+        switch name {
+        case "blink": play(.blink, frameDuration: 0.12, loops: 2)
+        case "hop": play(.hop, frameDuration: 0.11, loops: 1)
+        case "groom": play(.groom, frameDuration: 0.15, loops: 1)
+        case "scratch": play(.scratch, frameDuration: 0.11, loops: 1)
+        case "roll": play(.roll, frameDuration: 0.1, loops: 1)
+        case "sleep": startSleepLoop()
+        default: break
+        }
     }
 }
 
@@ -798,9 +862,11 @@ final class PetController: NSObject {
                 self?.catView.runInteractionPreview()
             }
         }
-        if ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_ACTION"] == "scratch" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.catView.runScratchPreview()
+        if let action = ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_ACTION"] {
+            let delay = Double(ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_DELAY"] ?? "") ?? 1.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.pauseMovement()
+                self?.catView.runActionPreview(named: action)
             }
         }
     }
