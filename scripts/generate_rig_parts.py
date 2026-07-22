@@ -93,14 +93,13 @@ def main() -> None:
     walk_source = fit(transparent_crop(WALK_SOURCE), 326, 250, 42)
     walk_alpha = walk_source.getchannel("A")
     walk_masks = {name: polygon_mask(walk_source.size, points) for name, points in WALK_PARTS.items()}
-    walk_masks["walk_body"] = ImageChops.subtract(walk_masks["walk_body"], walk_masks["walk_head"])
-    walk_masks["walk_body"] = ImageChops.subtract(walk_masks["walk_body"], walk_masks["walk_tail"])
-
     for name, mask in walk_masks.items():
         mask = Image.composite(walk_alpha, Image.new("L", walk_source.size, 0), mask)
         masked_source = walk_source.copy()
         masked_source.putalpha(mask)
         part = masked_source
+        if name == "walk_head":
+            part = part.rotate(-12, Image.Resampling.BICUBIC, center=(202, 259))
         part.save(OUTPUT / f"{name}.png", optimize=True)
 
     print(f"Generated {len(PARTS) + len(WALK_PARTS)} articulated layers in {OUTPUT}")

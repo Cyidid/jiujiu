@@ -353,7 +353,7 @@ final class CatView: NSView {
         rigLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
         headLayer.transform = CATransform3DMakeRotation(-0.18, 0, 0, 1)
-        walkHeadLayer.transform = CATransform3DMakeRotation(-0.28, 0, 0, 1)
+        walkHeadLayer.transform = CATransform3DIdentity
         shadowLayer.opacity = 0.7
         CATransaction.commit()
         setWalkingPose(false)
@@ -503,25 +503,25 @@ final class CatView: NSView {
         isWalking = true
         setWalkingPose(true, animated: true)
         let forever = Float.infinity
-        add(walkFrontLegLayer, "transform.rotation.z", [-0.13, 0.15, -0.13], 0.54,
+        add(walkFrontLegLayer, "transform.rotation.z", [-0.065, 0.075, -0.065], 0.54,
             repeatCount: forever, key: "walkFrontRotation")
-        add(walkFrontLegLayer, "transform.translation.y", [0, 5, 0], 0.54,
+        add(walkFrontLegLayer, "transform.translation.y", [0, 3, 0], 0.54,
             repeatCount: forever, key: "walkFrontLift")
-        add(walkRearLegLayer, "transform.rotation.z", [0.14, -0.14, 0.14], 0.54,
+        add(walkRearLegLayer, "transform.rotation.z", [0.07, -0.07, 0.07], 0.54,
             repeatCount: forever, key: "walkRearRotation")
-        add(walkRearLegLayer, "transform.translation.y", [5, 0, 5], 0.54,
+        add(walkRearLegLayer, "transform.translation.y", [3, 0, 3], 0.54,
             repeatCount: forever, key: "walkRearLift")
-        add(walkMiddleLegLayer, "transform.rotation.z", [-0.08, 0.09, -0.08], 0.54,
+        add(walkMiddleLegLayer, "transform.rotation.z", [-0.04, 0.045, -0.04], 0.54,
             repeatCount: forever, key: "walkMiddleRotation")
-        add(walkMiddleLegLayer, "transform.translation.y", [1, 4, 1], 0.54,
+        add(walkMiddleLegLayer, "transform.translation.y", [0.5, 2.5, 0.5], 0.54,
             repeatCount: forever, key: "walkMiddleLift")
-        add(walkBodyLayer, "transform.translation.y", [0, 2.4, 0], 0.27,
+        add(walkBodyLayer, "transform.translation.y", [0, 1.4, 0], 0.27,
             repeatCount: forever, key: "walkBodyBob")
-        add(walkBodyLayer, "transform.scale.x", [1, 1.012, 1], 0.54,
+        add(walkBodyLayer, "transform.scale.x", [1, 1.006, 1], 0.54,
             additive: false, repeatCount: forever, key: "walkBodyStride")
-        add(walkHeadLayer, "transform.translation.y", [0.7, -1.1, 0.7], 0.54,
+        add(walkHeadLayer, "transform.translation.y", [0.4, -0.7, 0.4], 0.54,
             repeatCount: forever, key: "walkHeadBob")
-        add(walkTailLayer, "transform.rotation.z", [-0.09, 0.11, -0.09], 0.82,
+        add(walkTailLayer, "transform.rotation.z", [-0.045, 0.055, -0.045], 0.82,
             repeatCount: forever, key: "walkTail")
         addShadowPulse(scale: [0.94, 1.04, 0.94],
                        opacity: [0.62, 0.74, 0.62],
