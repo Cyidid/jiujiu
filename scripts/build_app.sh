@@ -51,9 +51,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.2</string>
+  <string>2.3</string>
   <key>CFBundleVersion</key>
-  <string>24</string>
+  <string>25</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSHighResolutionCapable</key>
@@ -73,12 +73,16 @@ mv "$APP_DIR" "$ROOT_DIR/啾啾.app"
 
 APP_DIR="$ROOT_DIR/啾啾.app"
 xattr -cr "$APP_DIR"
+xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
 xattr -rd com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
 xattr -rd 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
 xattr -rd com.apple.ResourceFork "$APP_DIR" 2>/dev/null || true
 xattr -rd com.apple.provenance "$APP_DIR" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_DIR" >/dev/null
 xattr -cr "$APP_DIR"
+xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
 xattr -rd com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
 xattr -rd 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
 xattr -rd com.apple.ResourceFork "$APP_DIR" 2>/dev/null || true

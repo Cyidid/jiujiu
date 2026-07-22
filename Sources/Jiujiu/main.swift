@@ -140,6 +140,8 @@ struct PetStats {
 }
 
 final class CatView: NSView {
+    private let spriteLayer = CALayer()
+    private let shadowLayer = CALayer()
     private var frames: [PetMood: [NSImage]] = [:]
     private var currentMood: PetMood = .idle
     private var frameIndex = 0
@@ -153,9 +155,8 @@ final class CatView: NSView {
         self.controller = controller
         super.init(frame: frame)
         wantsLayer = true
-        layer?.contentsGravity = .resizeAspect
-        layer?.minificationFilter = .nearest
-        layer?.magnificationFilter = .nearest
+        layer?.masksToBounds = false
+        setupRenderLayers()
         loadFrames()
         showMood(.idle)
         startBreathing()
@@ -163,6 +164,36 @@ final class CatView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let spriteFrame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.05)
+        spriteLayer.frame = spriteFrame
+        shadowLayer.frame = NSRect(x: bounds.width * 0.24,
+                                   y: bounds.height * 0.055,
+                                   width: bounds.width * 0.52,
+                                   height: max(8, bounds.height * 0.075))
+        shadowLayer.cornerRadius = shadowLayer.frame.height / 2
+    }
+
+    private func setupRenderLayers() {
+        guard let rootLayer = layer else { return }
+        rootLayer.sublayerTransform = CATransform3DIdentity
+        rootLayer.sublayerTransform.m34 = -1.0 / 700.0
+
+        shadowLayer.backgroundColor = NSColor.black.withAlphaComponent(0.18).cgColor
+        shadowLayer.opacity = 0.7
+        shadowLayer.masksToBounds = true
+        rootLayer.addSublayer(shadowLayer)
+
+        spriteLayer.contentsGravity = .resizeAspect
+        spriteLayer.minificationFilter = .nearest
+        spriteLayer.magnificationFilter = .nearest
+        spriteLayer.anchorPoint = CGPoint(x: 0.5, y: 0.44)
+        spriteLayer.masksToBounds = false
+        rootLayer.addSublayer(spriteLayer)
+        needsLayout = true
     }
 
     private func loadFrames() {
@@ -186,7 +217,7 @@ final class CatView: NSView {
     private func showMood(_ mood: PetMood) {
         currentMood = mood
         frameIndex = 0
-        layer?.contents = frames[mood]?.first ?? frames[.idle]?.first
+        spriteLayer.contents = frames[mood]?.first ?? frames[.idle]?.first
     }
 
     func play(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
@@ -207,7 +238,7 @@ final class CatView: NSView {
                 return
             }
 
-            self.layer?.contents = sequence[self.frameIndex % sequence.count]
+            self.spriteLayer.contents = sequence[self.frameIndex % sequence.count]
             self.frameIndex += 1
             remainingFrames -= 1
             if remainingFrames <= 0 {
@@ -222,7 +253,7 @@ final class CatView: NSView {
         showMood(.sleep)
         animationTimer = Timer.scheduledTimer(withTimeInterval: 0.72, repeats: true) { [weak self] _ in
             guard let self, let sequence = self.frames[.sleep], !sequence.isEmpty else { return }
-            self.layer?.contents = sequence[self.frameIndex % sequence.count]
+            self.spriteLayer.contents = sequence[self.frameIndex % sequence.count]
             self.frameIndex += 1
         }
         settleTimer = Timer.scheduledTimer(withTimeInterval: 18, repeats: false) { [weak self] _ in
@@ -232,13 +263,61 @@ final class CatView: NSView {
 
     func startBreathing() {
         let breath = CABasicAnimation(keyPath: "transform.scale")
-        breath.fromValue = 1.0
+        breath.fromValue = 0.995
         breath.toValue = 1.025
-        breath.duration = 2.4
+        breath.duration = 2.2
         breath.autoreverses = true
         breath.repeatCount = .infinity
         breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer?.add(breath, forKey: "breath")
+        spriteLayer.add(breath, forKey: "breath")
+
+        let float = CABasicAnimation(keyPath: "position.y")
+        float.byValue = bounds.height * 0.018
+        float.duration = 2.2
+        float.autoreverses = true
+        float.repeatCount = .infinity
+        float.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        spriteLayer.add(float, forKey: "float")
+
+        let shadowPulse = CABasicAnimation(keyPath: "transform.scale.x")
+        shadowPulse.fromValue = 0.92
+        shadowPulse.toValue = 1.08
+        shadowPulse.duration = 2.2
+        shadowPulse.autoreverses = true
+        shadowPulse.repeatCount = .infinity
+        shadowPulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        shadowLayer.add(shadowPulse, forKey: "shadowPulse")
+    }
+
+    func setMotionTilt(dx: CGFloat, dy: CGFloat) {
+        let limitedX = max(-1.0, min(1.0, dx / 4.0))
+        let limitedY = max(-1.0, min(1.0, dy / 4.0))
+        var transform = CATransform3DIdentity
+        transform.m34 = -1.0 / 650.0
+        transform = CATransform3DRotate(transform, limitedX * 0.12, 0, 1, 0)
+        transform = CATransform3DRotate(transform, -limitedY * 0.08, 1, 0, 0)
+        transform = CATransform3DRotate(transform, -limitedX * 0.035, 0, 0, 1)
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.18)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        spriteLayer.transform = transform
+        shadowLayer.opacity = Float(0.55 + min(0.22, abs(limitedX) * 0.16 + abs(limitedY) * 0.08))
+        CATransaction.commit()
+    }
+
+    func bounce(_ strength: CGFloat = 1.0) {
+        let squash = CAKeyframeAnimation(keyPath: "transform.scale")
+        squash.values = [1.0, 1.08 + strength * 0.04, 0.94, 1.02, 1.0]
+        squash.keyTimes = [0, 0.24, 0.48, 0.76, 1]
+        squash.duration = 0.34
+        squash.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        spriteLayer.add(squash, forKey: "bounce")
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -246,6 +325,7 @@ final class CatView: NSView {
         dragStartWindowOrigin = window?.frame.origin ?? .zero
         controller?.pauseMovement()
         play(.blink, frameDuration: 0.12, loops: 1)
+        bounce(0.6)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -259,6 +339,7 @@ final class CatView: NSView {
     override func mouseUp(with event: NSEvent) {
         controller?.resumeMovementAfterInteraction()
         play(.hop, frameDuration: 0.12, loops: 1)
+        bounce(1.0)
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -268,6 +349,7 @@ final class CatView: NSView {
 
     @objc func clickReact() {
         play([PetMood.blink, .groom, .hop].randomElement() ?? .blink, frameDuration: 0.13, loops: 1)
+        bounce(0.8)
         controller?.receiveClick()
         controller?.nudgeAwayFromMouse()
     }
@@ -352,7 +434,7 @@ final class PetController: NSObject {
     private var velocity = CGVector(dx: 1.8, dy: 1.2)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
-    private let baseSize = NSSize(width: 243, height: 304)
+    private let baseSize = NSSize(width: 279, height: 340)
 
     func start() {
         let size = currentSize()
@@ -432,7 +514,7 @@ final class PetController: NSObject {
 
     private func startMovement() {
         movementTimer?.invalidate()
-        movementTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        movementTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.tickMovement()
         }
     }
@@ -494,8 +576,8 @@ final class PetController: NSObject {
     private func roam(_ window: NSWindow) {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         var frame = window.frame
-        frame.origin.x += velocity.dx * settings.speed
-        frame.origin.y += velocity.dy * settings.speed
+        frame.origin.x += velocity.dx * settings.speed * 0.55
+        frame.origin.y += velocity.dy * settings.speed * 0.55
 
         if frame.minX < screen.minX || frame.maxX > screen.maxX {
             velocity.dx *= -1
@@ -512,6 +594,7 @@ final class PetController: NSObject {
             velocity.dx = CGFloat.random(in: -2.2...2.2)
             velocity.dy = CGFloat.random(in: -1.8...1.8)
         }
+        catView.setMotionTilt(dx: velocity.dx, dy: velocity.dy)
         window.setFrameOrigin(frame.origin)
     }
 
@@ -519,12 +602,14 @@ final class PetController: NSObject {
         let mouse = NSEvent.mouseLocation
         let frame = window.frame
         let target = NSPoint(x: mouse.x - frame.width / 2, y: mouse.y - frame.height / 2)
+        catView.setMotionTilt(dx: target.x - frame.origin.x, dy: target.y - frame.origin.y)
         move(window, toward: target, easing: 0.045 * settings.speed)
     }
 
     private func moveTowardCorner(_ window: NSWindow) {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let target = NSPoint(x: screen.maxX - window.frame.width - 28, y: screen.minY + 28)
+        catView.setMotionTilt(dx: target.x - window.frame.origin.x, dy: target.y - window.frame.origin.y)
         move(window, toward: target, easing: 0.05)
     }
 
