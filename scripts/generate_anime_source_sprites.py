@@ -23,7 +23,49 @@ def is_checker_background(pixel: tuple[int, int, int, int]) -> bool:
     r, g, b, a = pixel
     if a < 245:
         return True
-    return abs(r - g) <= 4 and abs(g - b) <= 4 and r >= 220
+    return max(r, g, b) - min(r, g, b) <= 18 and max(r, g, b) >= 140
+
+
+def remove_matte_halo(image: Image.Image) -> Image.Image:
+    """Flood away pale checkerboard pixels reintroduced by image resizing."""
+    image = image.copy().convert("RGBA")
+    w, h = image.size
+    pix = image.load()
+    seen = bytearray(w * h)
+    q: deque[tuple[int, int]] = deque()
+
+    def is_halo(pixel: tuple[int, int, int, int]) -> bool:
+        r, g, b, a = pixel
+        return a < 8 or (max(r, g, b) - min(r, g, b) <= 20 and max(r, g, b) >= 125)
+
+    for x in range(w):
+        for y in (0, h - 1):
+            if is_halo(pix[x, y]):
+                seen[y * w + x] = 1
+                q.append((x, y))
+    for y in range(h):
+        for x in (0, w - 1):
+            idx = y * w + x
+            if not seen[idx] and is_halo(pix[x, y]):
+                seen[idx] = 1
+                q.append((x, y))
+
+    while q:
+        x, y = q.popleft()
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if nx < 0 or ny < 0 or nx >= w or ny >= h:
+                continue
+            idx = ny * w + nx
+            if seen[idx] or not is_halo(pix[nx, ny]):
+                continue
+            seen[idx] = 1
+            q.append((nx, ny))
+
+    for y in range(h):
+        for x in range(w):
+            if seen[y * w + x]:
+                pix[x, y] = (0, 0, 0, 0)
+    return image
 
 
 def transparent_crop(path: Path) -> Image.Image:
@@ -76,7 +118,7 @@ def fit(img: Image.Image, max_w: int, max_h: int, bottom: int, x_offset: int = 0
     x = (CANVAS[0] - img.width) // 2 + x_offset
     y = CANVAS[1] - img.height - bottom
     canvas.alpha_composite(img, (x, y))
-    return canvas
+    return remove_matte_halo(canvas)
 
 
 def affine(img: Image.Image, *, angle: float = 0, dx: int = 0, dy: int = 0,

@@ -85,13 +85,13 @@ def main() -> None:
 
     for name, mask in masks.items():
         mask = Image.composite(source_alpha, Image.new("L", source.size, 0), mask)
+        if name == "rig_body":
+            # Restore only source-backed chest pixels beneath the moving paw roots.
+            underlay = polygon_mask(source.size, [(166, 252), (251, 252), (258, 320), (164, 320)])
+            underlay = Image.composite(source_alpha, Image.new("L", source.size, 0), underlay)
+            mask = ImageChops.lighter(mask, underlay)
         part = source.copy()
         part.putalpha(mask)
-        if name == "rig_body":
-            # A small underlay hides joint gaps when either front paw swings away.
-            draw = ImageDraw.Draw(part)
-            draw.polygon([(166, 252), (251, 252), (268, 337), (160, 337)],
-                         fill=(252, 252, 250, 255))
         part.save(OUTPUT / f"{name}.png", optimize=True)
 
     walk_source = fit(transparent_crop(WALK_SOURCE), 326, 250, 42)
