@@ -183,8 +183,8 @@ final class CatView: NSView {
     }
 
     private var walkingLayers: [CALayer] {
-        [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkBodyLayer,
-         walkFrontDownLegLayer, walkFrontLegLayer, walkHeadLayer]
+        [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkFrontLegLayer,
+         walkBodyLayer, walkFrontDownLegLayer, walkHeadLayer]
     }
 
     private var partLayers: [CALayer] {
@@ -231,7 +231,7 @@ final class CatView: NSView {
         configurePart(walkHindLegLayer, anchor: CGPoint(x: 0.45, y: 0.30))
         configurePart(walkBodyLayer, anchor: CGPoint(x: 0.43, y: 0.31))
         configurePart(walkFrontDownLegLayer, anchor: CGPoint(x: 0.58, y: 0.33))
-        configurePart(walkFrontLegLayer, anchor: CGPoint(x: 0.62, y: 0.36))
+        configurePart(walkFrontLegLayer, anchor: CGPoint(x: 0.62, y: 0.33))
         configurePart(walkHeadLayer, anchor: CGPoint(x: 0.56, y: 0.34))
         shadowLayer.frame = NSRect(x: bounds.width * 0.24,
                                    y: bounds.height * 0.055,
@@ -586,41 +586,51 @@ final class CatView: NSView {
         isWalking = true
         setWalkingPose(true, animated: true)
         let forever = Float.infinity
-        let duration: TimeInterval = 0.64
+        let duration: TimeInterval = 0.72
         let phases: [NSNumber] = [0, 0.2, 0.5, 0.7, 1]
 
         // Opposing diagonal pairs alternate between a planted stance and a lifted return swing.
-        add(walkFrontLegLayer, "transform.rotation.z", [-0.1, 0.015, 0.105, 0.02, -0.1], duration, phases,
+        add(walkFrontLegLayer, "transform.rotation.z", [-0.14, 0.02, 0.14, 0.025, -0.14], duration, phases,
             repeatCount: forever, key: "walkFrontRotation")
-        add(walkFrontLegLayer, "transform.translation.y", [0, 0, 0.4, 3.8, 0], duration, phases,
+        add(walkFrontLegLayer, "transform.translation.x", [1.5, 0, -1.5, 0, 1.5], duration, phases,
+            repeatCount: forever, key: "walkFrontStride")
+        add(walkFrontLegLayer, "transform.translation.y", [0, 0, 0.5, 4.2, 0], duration, phases,
             repeatCount: forever, key: "walkFrontLift")
-        add(walkRearLegLayer, "transform.rotation.z", [0.09, -0.015, -0.095, -0.015, 0.09], duration, phases,
+        add(walkRearLegLayer, "transform.rotation.z", [0.12, -0.02, -0.12, -0.02, 0.12], duration, phases,
             repeatCount: forever, key: "walkRearRotation")
-        add(walkRearLegLayer, "transform.translation.y", [0, 0, 0.4, 3.4, 0], duration, phases,
+        add(walkRearLegLayer, "transform.translation.x", [-1.2, 0, 1.2, 0, -1.2], duration, phases,
+            repeatCount: forever, key: "walkRearStride")
+        add(walkRearLegLayer, "transform.translation.y", [0, 0, 0.5, 3.8, 0], duration, phases,
             repeatCount: forever, key: "walkRearLift")
 
-        add(walkHindLegLayer, "transform.rotation.z", [-0.09, -0.015, 0.09, 0.015, -0.09], duration, phases,
+        add(walkHindLegLayer, "transform.rotation.z", [-0.12, -0.02, 0.12, 0.02, -0.12], duration, phases,
             repeatCount: forever, key: "walkHindRotation")
-        add(walkHindLegLayer, "transform.translation.y", [0.5, 3.2, 0, 0, 0.5], duration, phases,
+        add(walkHindLegLayer, "transform.translation.x", [1.1, 0, -1.1, 0, 1.1], duration, phases,
+            repeatCount: forever, key: "walkHindStride")
+        add(walkHindLegLayer, "transform.translation.y", [0.5, 3.6, 0, 0, 0.5], duration, phases,
             repeatCount: forever, key: "walkHindLift")
-        add(walkFrontDownLegLayer, "transform.rotation.z", [0.09, 0.015, -0.09, -0.015, 0.09], duration, phases,
+        add(walkFrontDownLegLayer, "transform.rotation.z", [0.13, 0.02, -0.13, -0.02, 0.13], duration, phases,
             repeatCount: forever, key: "walkFrontDownRotation")
-        add(walkFrontDownLegLayer, "transform.translation.y", [0.5, 3.5, 0, 0, 0.5], duration, phases,
+        add(walkFrontDownLegLayer, "transform.translation.x", [-1.3, 0, 1.3, 0, -1.3], duration, phases,
+            repeatCount: forever, key: "walkFrontDownStride")
+        add(walkFrontDownLegLayer, "transform.translation.y", [0.5, 4, 0, 0, 0.5], duration, phases,
             repeatCount: forever, key: "walkFrontDownLift")
 
-        add(rigLayer, "transform.translation.y", [0, 0.9, 0, 0.9, 0], duration, phases,
+        add(rigLayer, "transform.translation.y", [0, 1.4, 0, 1.4, 0], duration, phases,
             repeatCount: forever, key: "walkWeightShift")
-        add(walkBodyLayer, "transform.translation.x", [0, 0.7, 0, -0.7, 0], duration, phases,
+        add(walkBodyLayer, "transform.translation.x", [0, 1.2, 0, -1.2, 0], duration, phases,
             repeatCount: forever, key: "walkBodyWeight")
-        add(walkBodyLayer, "transform.rotation.z", [0.012, 0, -0.012, 0, 0.012], duration, phases,
+        add(walkBodyLayer, "transform.rotation.z", [0.02, 0, -0.02, 0, 0.02], duration, phases,
             repeatCount: forever, key: "walkSpine")
         add(walkBodyLayer, "transform.scale.x", [1, 1.008, 1, 1.008, 1], duration, phases,
             additive: false, repeatCount: forever, key: "walkBodyStride")
-        add(walkHeadLayer, "transform.translation.y", [0, -0.6, 0, -0.6, 0], duration, phases,
+        add(walkHeadLayer, "transform.translation.x", [0, -0.8, 0, 0.8, 0], duration, phases,
+            repeatCount: forever, key: "walkHeadCounterShift")
+        add(walkHeadLayer, "transform.translation.y", [0, -1, 0, -1, 0], duration, phases,
             repeatCount: forever, key: "walkHeadBob")
-        add(walkHeadLayer, "transform.rotation.z", [-0.01, 0.008, 0.01, -0.008, -0.01], duration, phases,
+        add(walkHeadLayer, "transform.rotation.z", [-0.018, 0.012, 0.018, -0.012, -0.018], duration, phases,
             repeatCount: forever, key: "walkHeadBalance")
-        add(walkTailLayer, "transform.rotation.z", [-0.055, 0, 0.065, 0, -0.055], duration, phases,
+        add(walkTailLayer, "transform.rotation.z", [-0.08, 0, 0.09, 0, -0.08], duration, phases,
             repeatCount: forever, key: "walkTail")
         addShadowPulse(scale: [1, 0.96, 1, 0.96, 1],
                        opacity: [0.74, 0.67, 0.74, 0.67, 0.74],
@@ -1137,7 +1147,7 @@ final class PetController: NSObject {
     }
 
     private func nextStrideMultiplier() -> CGFloat {
-        gaitPhase += (.pi * 2) / (0.64 * 60)
+        gaitPhase += (.pi * 2) / (0.72 * 60)
         if gaitPhase >= .pi * 2 {
             gaitPhase -= .pi * 2
         }
