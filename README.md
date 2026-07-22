@@ -21,7 +21,7 @@
 
 ## 素材说明
 
-当前应用使用 `Resources/` 下的两套共十二张透明骨骼部件 PNG 和 `AppIcon.icns`：正面坐姿用于互动，四足侧身姿态用于行走。多角度动漫源图保存在 `assets/source/multiview/`，`scripts/generate_rig_parts.py` 会生成两套动画部件，`scripts/generate_app_icon.py` 可根据当前 `normal.png` 重新生成应用图标。
+当前应用使用 `Resources/` 下的两套共十三张透明骨骼部件 PNG 和 `AppIcon.icns`：正面坐姿用于互动，四足侧身姿态用于行走。多角度动漫源图保存在 `assets/source/multiview/`，`scripts/generate_rig_parts.py` 会生成两套动画部件，`scripts/generate_app_icon.py` 可根据当前 `normal.png` 重新生成应用图标。
 - 轻提醒：保留桌宠作为温和提醒媒介的思路，每 45 分钟提醒休息喝水，可开启勿扰模式。
 - 专注陪伴：可以让甜喵进入角落休息，并启动 25 分钟专注计时。
 

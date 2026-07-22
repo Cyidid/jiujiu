@@ -161,8 +161,9 @@ final class CatView: NSView {
     private let headLayer = CALayer()
     private let walkTailLayer = CALayer()
     private let walkRearLegLayer = CALayer()
-    private let walkMiddleLegLayer = CALayer()
+    private let walkHindLegLayer = CALayer()
     private let walkBodyLayer = CALayer()
+    private let walkFrontDownLegLayer = CALayer()
     private let walkFrontLegLayer = CALayer()
     private let walkHeadLayer = CALayer()
     private var currentMood: PetMood = .idle
@@ -178,7 +179,8 @@ final class CatView: NSView {
     }
 
     private var walkingLayers: [CALayer] {
-        [walkTailLayer, walkRearLegLayer, walkMiddleLegLayer, walkBodyLayer, walkFrontLegLayer, walkHeadLayer]
+        [walkTailLayer, walkRearLegLayer, walkHindLegLayer, walkBodyLayer,
+         walkFrontDownLegLayer, walkFrontLegLayer, walkHeadLayer]
     }
 
     private var partLayers: [CALayer] {
@@ -213,9 +215,10 @@ final class CatView: NSView {
         configurePart(rightPawLayer, anchor: CGPoint(x: 0.69, y: 0.31))
         configurePart(headLayer, anchor: CGPoint(x: 0.52, y: 0.39))
         configurePart(walkTailLayer, anchor: CGPoint(x: 0.23, y: 0.37))
-        configurePart(walkRearLegLayer, anchor: CGPoint(x: 0.28, y: 0.30))
-        configurePart(walkMiddleLegLayer, anchor: CGPoint(x: 0.51, y: 0.31))
+        configurePart(walkRearLegLayer, anchor: CGPoint(x: 0.29, y: 0.30))
+        configurePart(walkHindLegLayer, anchor: CGPoint(x: 0.45, y: 0.30))
         configurePart(walkBodyLayer, anchor: CGPoint(x: 0.43, y: 0.31))
+        configurePart(walkFrontDownLegLayer, anchor: CGPoint(x: 0.58, y: 0.33))
         configurePart(walkFrontLegLayer, anchor: CGPoint(x: 0.62, y: 0.36))
         configurePart(walkHeadLayer, anchor: CGPoint(x: 0.56, y: 0.34))
         shadowLayer.frame = NSRect(x: bounds.width * 0.24,
@@ -264,8 +267,9 @@ final class CatView: NSView {
             (headLayer, "rig_head"),
             (walkTailLayer, "walk_tail"),
             (walkRearLegLayer, "walk_rear_leg"),
-            (walkMiddleLegLayer, "walk_middle_leg"),
+            (walkHindLegLayer, "walk_hind_leg"),
             (walkBodyLayer, "walk_body"),
+            (walkFrontDownLegLayer, "walk_front_down_leg"),
             (walkFrontLegLayer, "walk_front_leg"),
             (walkHeadLayer, "walk_head")
         ]
@@ -503,18 +507,22 @@ final class CatView: NSView {
         isWalking = true
         setWalkingPose(true, animated: true)
         let forever = Float.infinity
-        add(walkFrontLegLayer, "transform.rotation.z", [-0.065, 0.075, -0.065], 0.54,
+        add(walkFrontLegLayer, "transform.rotation.z", [-0.055, 0.06, -0.055], 0.54,
             repeatCount: forever, key: "walkFrontRotation")
-        add(walkFrontLegLayer, "transform.translation.y", [0, 3, 0], 0.54,
+        add(walkFrontLegLayer, "transform.translation.y", [0, 2.4, 0], 0.54,
             repeatCount: forever, key: "walkFrontLift")
-        add(walkRearLegLayer, "transform.rotation.z", [0.07, -0.07, 0.07], 0.54,
+        add(walkRearLegLayer, "transform.rotation.z", [0.055, -0.055, 0.055], 0.54,
             repeatCount: forever, key: "walkRearRotation")
-        add(walkRearLegLayer, "transform.translation.y", [3, 0, 3], 0.54,
+        add(walkRearLegLayer, "transform.translation.y", [2.4, 0, 2.4], 0.54,
             repeatCount: forever, key: "walkRearLift")
-        add(walkMiddleLegLayer, "transform.rotation.z", [-0.04, 0.045, -0.04], 0.54,
-            repeatCount: forever, key: "walkMiddleRotation")
-        add(walkMiddleLegLayer, "transform.translation.y", [0.5, 2.5, 0.5], 0.54,
-            repeatCount: forever, key: "walkMiddleLift")
+        add(walkHindLegLayer, "transform.rotation.z", [-0.045, 0.045, -0.045], 0.54,
+            repeatCount: forever, key: "walkHindRotation")
+        add(walkHindLegLayer, "transform.translation.y", [0, 2, 0], 0.54,
+            repeatCount: forever, key: "walkHindLift")
+        add(walkFrontDownLegLayer, "transform.rotation.z", [0.045, -0.045, 0.045], 0.54,
+            repeatCount: forever, key: "walkFrontDownRotation")
+        add(walkFrontDownLegLayer, "transform.translation.y", [2, 0, 2], 0.54,
+            repeatCount: forever, key: "walkFrontDownLift")
         add(walkBodyLayer, "transform.translation.y", [0, 1.4, 0], 0.27,
             repeatCount: forever, key: "walkBodyBob")
         add(walkBodyLayer, "transform.scale.x", [1, 1.006, 1], 0.54,
