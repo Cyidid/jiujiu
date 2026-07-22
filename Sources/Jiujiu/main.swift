@@ -218,6 +218,7 @@ final class CatView: NSView {
         currentMood = mood
         frameIndex = 0
         spriteLayer.contents = frames[mood]?.first ?? frames[.idle]?.first
+        clearActionMotion()
     }
 
     func play(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
@@ -232,6 +233,8 @@ final class CatView: NSView {
         currentMood = mood
         frameIndex = 0
         var remainingFrames = max(1, loops) * sequence.count
+        applyActionMotion(for: mood,
+                          duration: frameDuration * Double(sequence.count) * Double(max(1, loops)))
         animationTimer = Timer.scheduledTimer(withTimeInterval: frameDuration, repeats: true) { [weak self] timer in
             guard let self else {
                 timer.invalidate()
@@ -251,6 +254,7 @@ final class CatView: NSView {
     func startSleepLoop() {
         animationTimer?.invalidate()
         showMood(.sleep)
+        applySleepMotion()
         animationTimer = Timer.scheduledTimer(withTimeInterval: 0.72, repeats: true) { [weak self] _ in
             guard let self, let sequence = self.frames[.sleep], !sequence.isEmpty else { return }
             self.spriteLayer.contents = sequence[self.frameIndex % sequence.count]
@@ -259,6 +263,148 @@ final class CatView: NSView {
         settleTimer = Timer.scheduledTimer(withTimeInterval: 18, repeats: false) { [weak self] _ in
             self?.showMood(.idle)
         }
+    }
+
+    private func clearActionMotion() {
+        spriteLayer.removeAnimation(forKey: "actionLift")
+        spriteLayer.removeAnimation(forKey: "actionLean")
+        spriteLayer.removeAnimation(forKey: "actionScaleX")
+        spriteLayer.removeAnimation(forKey: "actionScaleY")
+        spriteLayer.removeAnimation(forKey: "sleepSway")
+        shadowLayer.removeAnimation(forKey: "actionShadowScale")
+        shadowLayer.removeAnimation(forKey: "actionShadowOpacity")
+    }
+
+    private func keyframe(_ keyPath: String,
+                          values: [CGFloat],
+                          duration: TimeInterval,
+                          keyTimes: [NSNumber]? = nil,
+                          additive: Bool = true) -> CAKeyframeAnimation {
+        let animation = CAKeyframeAnimation(keyPath: keyPath)
+        animation.values = values
+        animation.keyTimes = keyTimes
+        animation.duration = duration
+        animation.isAdditive = additive
+        animation.calculationMode = .cubic
+        animation.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut),
+                                          count: max(1, values.count - 1))
+        return animation
+    }
+
+    private func applyActionMotion(for mood: PetMood, duration: TimeInterval) {
+        clearActionMotion()
+        let total = max(0.18, duration)
+        switch mood {
+        case .idle:
+            break
+        case .blink:
+            addScalePulse(x: [1.0, 1.015, 1.0],
+                          y: [1.0, 0.965, 1.0],
+                          duration: total)
+        case .hop:
+            let lift = max(18, bounds.height * 0.18)
+            spriteLayer.add(keyframe("transform.translation.y",
+                                     values: [0, lift * 0.72, lift, lift * 0.48, -lift * 0.08, 0],
+                                     duration: total,
+                                     keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1]),
+                            forKey: "actionLift")
+            spriteLayer.add(keyframe("transform.rotation.z",
+                                     values: [0, -0.08, 0.06, -0.035, 0.02, 0],
+                                     duration: total,
+                                     keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1]),
+                            forKey: "actionLean")
+            spriteLayer.add(keyframe("transform.scale.y",
+                                     values: [1.0, 0.93, 1.06, 1.02, 0.9, 1.0],
+                                     duration: total,
+                                     keyTimes: [0, 0.14, 0.36, 0.62, 0.82, 1],
+                                     additive: false),
+                            forKey: "actionScaleY")
+            spriteLayer.add(keyframe("transform.scale.x",
+                                     values: [1.0, 1.06, 0.96, 0.98, 1.09, 1.0],
+                                     duration: total,
+                                     keyTimes: [0, 0.14, 0.36, 0.62, 0.82, 1],
+                                     additive: false),
+                            forKey: "actionScaleX")
+            addShadowPulse(scale: [1.05, 0.76, 0.66, 0.82, 1.22, 1.0],
+                           opacity: [0.72, 0.42, 0.34, 0.48, 0.86, 0.7],
+                           duration: total,
+                           keyTimes: [0, 0.18, 0.38, 0.62, 0.82, 1])
+        case .groom:
+            spriteLayer.add(keyframe("transform.rotation.z",
+                                     values: [0, -0.09, 0.055, -0.075, 0.04, 0],
+                                     duration: total),
+                            forKey: "actionLean")
+            spriteLayer.add(keyframe("transform.translation.y",
+                                     values: [0, -bounds.height * 0.012, bounds.height * 0.02, -bounds.height * 0.01, 0],
+                                     duration: total),
+                            forKey: "actionLift")
+            addScalePulse(x: [1.0, 1.035, 0.985, 1.02, 1.0],
+                          y: [1.0, 0.985, 1.025, 0.99, 1.0],
+                          duration: total)
+        case .sleep:
+            applySleepMotion()
+        case .roll:
+            spriteLayer.add(keyframe("transform.rotation.z",
+                                     values: [0, 0.75, 1.55, 2.45, 3.25, 4.15, 5.15, 6.28],
+                                     duration: total,
+                                     keyTimes: [0, 0.13, 0.27, 0.42, 0.58, 0.73, 0.88, 1]),
+                            forKey: "actionLean")
+            spriteLayer.add(keyframe("transform.translation.y",
+                                     values: [0, bounds.height * 0.05, bounds.height * 0.025, -bounds.height * 0.018, 0],
+                                     duration: total),
+                            forKey: "actionLift")
+            addShadowPulse(scale: [1.0, 0.9, 1.12, 0.94, 1.0],
+                           opacity: [0.7, 0.48, 0.78, 0.58, 0.7],
+                           duration: total)
+        }
+    }
+
+    private func applySleepMotion() {
+        clearActionMotion()
+        let duration: TimeInterval = 2.8
+        let sleepScale = keyframe("transform.scale.y",
+                                  values: [1.0, 1.028, 1.0],
+                                  duration: duration,
+                                  additive: false)
+        sleepScale.repeatCount = .infinity
+        spriteLayer.add(sleepScale, forKey: "actionScaleY")
+        let sway = keyframe("transform.rotation.z", values: [-0.012, 0.012, -0.012], duration: duration)
+        sway.repeatCount = .infinity
+        spriteLayer.add(sway, forKey: "sleepSway")
+        addShadowPulse(scale: [1.0, 1.08, 1.0],
+                       opacity: [0.62, 0.76, 0.62],
+                       duration: duration,
+                       repeatForever: true)
+    }
+
+    private func addScalePulse(x: [CGFloat], y: [CGFloat], duration: TimeInterval) {
+        spriteLayer.add(keyframe("transform.scale.x", values: x, duration: duration, additive: false),
+                        forKey: "actionScaleX")
+        spriteLayer.add(keyframe("transform.scale.y", values: y, duration: duration, additive: false),
+                        forKey: "actionScaleY")
+    }
+
+    private func addShadowPulse(scale: [CGFloat],
+                                opacity: [CGFloat],
+                                duration: TimeInterval,
+                                keyTimes: [NSNumber]? = nil,
+                                repeatForever: Bool = false) {
+        let shadowScale = keyframe("transform.scale.x",
+                                   values: scale,
+                                   duration: duration,
+                                   keyTimes: keyTimes,
+                                   additive: false)
+        let shadowOpacity = keyframe("opacity",
+                                     values: opacity,
+                                     duration: duration,
+                                     keyTimes: keyTimes,
+                                     additive: false)
+        if repeatForever {
+            shadowScale.repeatCount = .infinity
+            shadowOpacity.repeatCount = .infinity
+        }
+        shadowLayer.add(shadowScale, forKey: "actionShadowScale")
+        shadowLayer.add(shadowOpacity, forKey: "actionShadowOpacity")
     }
 
     func startBreathing() {
