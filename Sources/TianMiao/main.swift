@@ -11,6 +11,7 @@ enum PetMode: String {
 enum PetMood: String {
     case idle
     case blink
+    case react
     case hop
     case groom
     case sleep
@@ -151,6 +152,7 @@ final class CatView: NSView {
     private var currentMood: PetMood = .idle
     private var settleTimer: Timer?
     private var isWalking = false
+    private var wasDragged = false
     private var dragStartPoint: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
     private weak var controller: PetController?
@@ -254,6 +256,11 @@ final class CatView: NSView {
         }
     }
 
+    func playIfIdle(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
+        guard currentMood == .idle else { return }
+        play(mood, frameDuration: frameDuration, loops: loops)
+    }
+
     func startSleepLoop() {
         settleTimer?.invalidate()
         currentMood = .sleep
@@ -265,6 +272,11 @@ final class CatView: NSView {
         }
     }
 
+    func startSleepIfIdle() {
+        guard currentMood == .idle else { return }
+        startSleepLoop()
+    }
+
     private func clearActionMotion() {
         rigLayer.removeAllAnimations()
         shadowLayer.removeAllAnimations()
@@ -273,6 +285,7 @@ final class CatView: NSView {
         CATransaction.setDisableActions(true)
         rigLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
+        headLayer.transform = CATransform3DMakeRotation(-0.18, 0, 0, 1)
         shadowLayer.opacity = 0.7
         CATransaction.commit()
     }
@@ -306,6 +319,8 @@ final class CatView: NSView {
             add(headLayer, "transform.rotation.z", [0, -0.025, 0], total)
             add(leftPawLayer, "transform.rotation.z", [0, 0.035, 0], total)
             add(rightPawLayer, "transform.rotation.z", [0, -0.035, 0], total)
+        case .react:
+            break
         case .hop:
             let lift = max(18, bounds.height * 0.18)
             let times: [NSNumber] = [0, 0.14, 0.36, 0.62, 0.82, 1]
@@ -385,9 +400,9 @@ final class CatView: NSView {
     private func startIdleMotion() {
         add(bodyLayer, "transform.scale.y", [0.995, 1.018, 0.995], 2.5,
             additive: false, repeatCount: .infinity, key: "idleBreath")
-        add(headLayer, "transform.rotation.z", [-0.012, 0.014, -0.012], 3.4,
+        add(headLayer, "transform.rotation.z", [-0.006, 0.006, -0.006], 3.8,
             repeatCount: .infinity, key: "idleHead")
-        add(tailLayer, "transform.rotation.z", [-0.08, 0.12, -0.08], 2.2,
+        add(tailLayer, "transform.rotation.z", [-0.055, 0.075, -0.055], 2.6,
             repeatCount: .infinity, key: "idleTail")
         addShadowPulse(scale: [0.97, 1.03, 0.97],
                        opacity: [0.64, 0.72, 0.64],
@@ -400,28 +415,78 @@ final class CatView: NSView {
         clearActionMotion()
         isWalking = true
         let forever = Float.infinity
-        add(leftPawLayer, "transform.rotation.z", [-0.17, 0.16, -0.17], 0.48,
+        add(leftPawLayer, "transform.rotation.z", [-0.1, 0.1, -0.1], 0.56,
             repeatCount: forever, key: "walkLeftRotation")
-        add(leftPawLayer, "transform.translation.y", [0, 8, 0], 0.48,
+        add(leftPawLayer, "transform.translation.y", [0, 5, 0], 0.56,
             repeatCount: forever, key: "walkLeftLift")
-        add(rightPawLayer, "transform.rotation.z", [0.16, -0.17, 0.16], 0.48,
+        add(rightPawLayer, "transform.rotation.z", [0.1, -0.1, 0.1], 0.56,
             repeatCount: forever, key: "walkRightRotation")
-        add(rightPawLayer, "transform.translation.y", [8, 0, 8], 0.48,
+        add(rightPawLayer, "transform.translation.y", [5, 0, 5], 0.56,
             repeatCount: forever, key: "walkRightLift")
-        add(bodyLayer, "transform.translation.y", [0, 3.5, 0], 0.24,
+        add(bodyLayer, "transform.translation.y", [0, 2, 0], 0.28,
             repeatCount: forever, key: "walkBody")
-        add(haunchLayer, "transform.rotation.z", [-0.025, 0.025, -0.025], 0.48,
+        add(haunchLayer, "transform.rotation.z", [-0.014, 0.014, -0.014], 0.56,
             repeatCount: forever, key: "walkHaunch")
-        add(headLayer, "transform.translation.y", [1, -2, 1], 0.48,
+        add(headLayer, "transform.translation.y", [0.6, -1.2, 0.6], 0.56,
             repeatCount: forever, key: "walkHeadBob")
-        add(headLayer, "transform.rotation.z", [-0.018, 0.018, -0.018], 0.48,
+        add(headLayer, "transform.rotation.z", [-0.008, 0.008, -0.008], 0.56,
             repeatCount: forever, key: "walkHeadTilt")
-        add(tailLayer, "transform.rotation.z", [-0.2, 0.22, -0.2], 0.78,
+        add(tailLayer, "transform.rotation.z", [-0.12, 0.14, -0.12], 0.9,
             repeatCount: forever, key: "walkTail")
         addShadowPulse(scale: [0.94, 1.04, 0.94],
                        opacity: [0.62, 0.74, 0.62],
-                       duration: 0.48,
+                       duration: 0.56,
                        repeatForever: true)
+    }
+
+    private func finishInteraction(after duration: TimeInterval) {
+        settleTimer?.invalidate()
+        settleTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+            self?.showMood(.idle)
+        }
+    }
+
+    private func reactToClick(at location: NSPoint) {
+        currentMood = .react
+        isWalking = false
+        clearActionMotion()
+        let direction: CGFloat = location.x < bounds.midX ? -1 : 1
+        let total: TimeInterval = 0.72
+        let times: [NSNumber] = [0, 0.16, 0.42, 0.72, 1]
+
+        add(headLayer, "transform.rotation.z",
+            [0, direction * 0.025, direction * 0.04, -direction * 0.012, 0], total, times)
+        add(headLayer, "transform.translation.x",
+            [0, direction * 2, direction * 3.5, direction, 0], total, times)
+        add(headLayer, "transform.translation.y", [0, -1, 1.5, 0.5, 0], total, times)
+        add(bodyLayer, "transform.scale.y", [1, 0.985, 1.012, 1.004, 1], total, times, additive: false)
+        add(rigLayer, "transform.translation.y", [0, -1.5, 2.5, 1, 0], total, times)
+        add(tailLayer, "transform.rotation.z",
+            [0, -direction * 0.08, direction * 0.14, -direction * 0.045, 0], total, times)
+
+        let respondingPaw = direction < 0 ? leftPawLayer : rightPawLayer
+        add(respondingPaw, "transform.translation.y", [0, 3, 8, 3, 0], total, times)
+        add(respondingPaw, "transform.rotation.z",
+            [0, -direction * 0.025, -direction * 0.07, -direction * 0.02, 0], total, times)
+        addShadowPulse(scale: [1, 1.03, 0.97, 1.01, 1],
+                       opacity: [0.68, 0.72, 0.64, 0.69, 0.68],
+                       duration: total,
+                       keyTimes: times)
+        finishInteraction(after: total)
+    }
+
+    private func settleAfterDrag() {
+        currentMood = .react
+        isWalking = false
+        clearActionMotion()
+        let total: TimeInterval = 0.46
+        let times: [NSNumber] = [0, 0.28, 0.62, 1]
+        add(rigLayer, "transform.translation.y", [4, -2, 1, 0], total, times)
+        add(bodyLayer, "transform.scale.y", [1.02, 0.975, 1.008, 1], total, times, additive: false)
+        add(leftPawLayer, "transform.rotation.z", [-0.04, 0.035, -0.012, 0], total, times)
+        add(rightPawLayer, "transform.rotation.z", [0.04, -0.035, 0.012, 0], total, times)
+        add(tailLayer, "transform.rotation.z", [0.08, -0.05, 0.02, 0], total, times)
+        finishInteraction(after: total)
     }
 
     private func stopWalkCycle() {
@@ -478,26 +543,11 @@ final class CatView: NSView {
         CATransaction.commit()
     }
 
-    func bounce(_ strength: CGFloat = 1.0) {
-        let squash = CAKeyframeAnimation(keyPath: "transform.scale")
-        squash.values = [1.0, 1.08 + strength * 0.04, 0.94, 1.02, 1.0]
-        squash.keyTimes = [0, 0.24, 0.48, 0.76, 1]
-        squash.duration = 0.34
-        squash.timingFunctions = [
-            CAMediaTimingFunction(name: .easeOut),
-            CAMediaTimingFunction(name: .easeInEaseOut),
-            CAMediaTimingFunction(name: .easeOut),
-            CAMediaTimingFunction(name: .easeInEaseOut)
-        ]
-        rigLayer.add(squash, forKey: "bounce")
-    }
-
     override func mouseDown(with event: NSEvent) {
         dragStartPoint = event.locationInWindow
         dragStartWindowOrigin = window?.frame.origin ?? .zero
+        wasDragged = false
         controller?.pauseMovement()
-        play(.blink, frameDuration: 0.12, loops: 1)
-        bounce(0.6)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -505,13 +555,17 @@ final class CatView: NSView {
         let current = event.locationInWindow
         let dx = current.x - dragStartPoint.x
         let dy = current.y - dragStartPoint.y
+        if hypot(dx, dy) > 3 {
+            wasDragged = true
+        }
         window.setFrameOrigin(NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy))
     }
 
     override func mouseUp(with event: NSEvent) {
         controller?.resumeMovementAfterInteraction()
-        play(.hop, frameDuration: 0.12, loops: 1)
-        bounce(1.0)
+        if wasDragged {
+            settleAfterDrag()
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -520,10 +574,13 @@ final class CatView: NSView {
     }
 
     @objc func clickReact() {
-        play([PetMood.blink, .groom, .hop].randomElement() ?? .blink, frameDuration: 0.13, loops: 1)
-        bounce(0.8)
+        let windowPoint = window?.mouseLocationOutsideOfEventStream ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        reactToClick(at: convert(windowPoint, from: nil))
         controller?.receiveClick()
-        controller?.nudgeAwayFromMouse()
+    }
+
+    func runInteractionPreview() {
+        reactToClick(at: NSPoint(x: bounds.midX * 0.72, y: bounds.midY))
     }
 }
 
@@ -603,7 +660,7 @@ final class PetController: NSObject {
     private var reminderTimer: Timer?
     private var decayTimer: Timer?
     private var focusTimer: Timer?
-    private var velocity = CGVector(dx: 1.8, dy: 1.2)
+    private var velocity = CGVector(dx: -1.8, dy: 1.2)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
     private let baseSize = NSSize(width: 360, height: 392)
@@ -626,6 +683,11 @@ final class PetController: NSObject {
         startGentleReminders()
         startNeedsDecay()
         showBubble("甜喵来啦，\(stats.moodLine)")
+        if ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_INTERACTION"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.catView.runInteractionPreview()
+            }
+        }
     }
 
     func makeMenu() -> NSMenu {
@@ -697,13 +759,13 @@ final class PetController: NSObject {
             guard let self else { return }
             let roll = Int.random(in: 0..<100)
             if roll < 48 {
-                self.catView.play(.blink, frameDuration: 0.11, loops: 1)
+                self.catView.playIfIdle(.blink, frameDuration: 0.11, loops: 1)
             } else if roll < 72 {
-                self.catView.play(.groom, frameDuration: 0.16, loops: 1)
+                self.catView.playIfIdle(.groom, frameDuration: 0.16, loops: 1)
             } else if roll < 88 {
-                self.catView.play(.hop, frameDuration: 0.12, loops: 1)
+                self.catView.playIfIdle(.hop, frameDuration: 0.12, loops: 1)
             } else {
-                self.catView.startSleepLoop()
+                self.catView.startSleepIfIdle()
             }
         }
     }
@@ -754,12 +816,12 @@ final class PetController: NSObject {
         if frame.minX < screen.minX || frame.maxX > screen.maxX {
             velocity.dx *= -1
             frame.origin.x = min(max(frame.origin.x, screen.minX), screen.maxX - frame.width)
-            catView.play(.roll, frameDuration: 0.08, loops: 1)
+            catView.playIfIdle(.roll, frameDuration: 0.08, loops: 1)
         }
         if frame.minY < screen.minY || frame.maxY > screen.maxY {
             velocity.dy *= -1
             frame.origin.y = min(max(frame.origin.y, screen.minY), screen.maxY - frame.height)
-            catView.play(.hop, frameDuration: 0.11, loops: 1)
+            catView.playIfIdle(.hop, frameDuration: 0.11, loops: 1)
         }
 
         if Int.random(in: 0..<260) == 0 {
