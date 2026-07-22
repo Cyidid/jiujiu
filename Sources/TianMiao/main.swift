@@ -195,6 +195,10 @@ final class CatView: NSView {
         currentMood != .idle
     }
 
+    var isWalkingPose: Bool {
+        isWalking
+    }
+
     init(frame: NSRect, controller: PetController) {
         self.controller = controller
         super.init(frame: frame)
@@ -241,7 +245,7 @@ final class CatView: NSView {
         rootLayer.sublayerTransform = CATransform3DIdentity
         rootLayer.sublayerTransform.m34 = -1.0 / 700.0
 
-        shadowLayer.backgroundColor = NSColor.black.withAlphaComponent(0.18).cgColor
+        shadowLayer.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor
         shadowLayer.opacity = 0.7
         shadowLayer.masksToBounds = true
         rootLayer.addSublayer(shadowLayer)
@@ -359,34 +363,42 @@ final class CatView: NSView {
 
     func play(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
         settleTimer?.invalidate()
+        let wasWalking = isWalking
         currentMood = mood
         isWalking = false
         let actionFrames: [PetMood: Int] = [.blink: 4, .hop: 8, .groom: 7, .scratch: 12, .roll: 8]
         let duration = frameDuration * Double(actionFrames[mood] ?? 5) * Double(max(1, loops))
         applyActionMotion(for: mood, duration: duration)
+        if wasWalking {
+            setWalkingPose(false, animated: true)
+        }
         settleTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
             self?.showMood(.idle)
         }
     }
 
     func playIfIdle(_ mood: PetMood, frameDuration: TimeInterval = 0.16, loops: Int = 1) {
-        guard currentMood == .idle else { return }
+        guard currentMood == .idle, !isWalking else { return }
         play(mood, frameDuration: frameDuration, loops: loops)
     }
 
     func startSleepLoop() {
         settleTimer?.invalidate()
+        let wasWalking = isWalking
         currentMood = .sleep
         isWalking = false
         clearActionMotion()
         applySleepMotion()
+        if wasWalking {
+            setWalkingPose(false, animated: true)
+        }
         settleTimer = Timer.scheduledTimer(withTimeInterval: 18, repeats: false) { [weak self] _ in
             self?.showMood(.idle)
         }
     }
 
     func startSleepIfIdle() {
-        guard currentMood == .idle else { return }
+        guard currentMood == .idle, !isWalking else { return }
         startSleepLoop()
     }
 
@@ -400,7 +412,7 @@ final class CatView: NSView {
         CATransaction.setDisableActions(true)
         rigLayer.transform = CATransform3DIdentity
         partLayers.forEach { $0.transform = CATransform3DIdentity }
-        headLayer.transform = CATransform3DMakeRotation(-0.18, 0, 0, 1)
+        headLayer.transform = CATransform3DMakeRotation(0.10, 0, 0, 1)
         walkHeadLayer.transform = CATransform3DIdentity
         leftBlinkLayer.opacity = 0
         rightBlinkLayer.opacity = 0
@@ -493,16 +505,20 @@ final class CatView: NSView {
         case .sleep:
             applySleepMotion()
         case .roll:
-            let times: [NSNumber] = [0, 0.13, 0.27, 0.42, 0.58, 0.73, 0.88, 1]
-            add(rigLayer, "transform.rotation.z", [0, -0.22, -0.95, -1.9, -3.05, -4.15, -5.35, -6.28], total, times)
-            add(rigLayer, "transform.translation.x", [0, -2, -7, -10, -6, 2, 5, 0], total, times)
-            add(rigLayer, "transform.translation.y", [0, -3, 1, 5, 2, 5, 1, 0], total, times)
-            add(rigLayer, "transform.scale.y", [1, 0.91, 0.96, 1.01, 0.94, 1, 0.97, 1], total, times, additive: false)
-            add(leftPawLayer, "transform.rotation.z", [0, 0.2, 0.3, 0.32, 0.28, 0.2, 0.08, 0], total, times)
-            add(rightPawLayer, "transform.rotation.z", [0, -0.2, -0.3, -0.32, -0.28, -0.2, -0.08, 0], total, times)
-            add(tailLayer, "transform.rotation.z", [0, -0.18, -0.28, -0.2, 0.12, 0.24, 0.12, 0], total, times)
-            addShadowPulse(scale: [1, 1.08, 0.96, 0.9, 1.03, 0.94, 1.06, 1],
-                           opacity: [0.7, 0.78, 0.67, 0.61, 0.72, 0.64, 0.74, 0.7],
+            let times: [NSNumber] = [0, 0.14, 0.32, 0.5, 0.68, 0.86, 1]
+            add(rigLayer, "transform.rotation.z", [0, -0.06, -0.2, -0.38, -0.24, -0.07, 0], total, times)
+            add(rigLayer, "transform.translation.x", [0, -1, -4, -6, -4, -1, 0], total, times)
+            add(rigLayer, "transform.translation.y", [0, -2, -5, -7, -5, -2, 0], total, times)
+            add(rigLayer, "transform.scale.y", [1, 0.94, 0.87, 0.83, 0.88, 0.96, 1], total, times, additive: false)
+            add(bodyLayer, "transform.scale.x", [1, 1.03, 1.08, 1.12, 1.08, 1.03, 1], total, times, additive: false)
+            add(haunchLayer, "transform.translation.x", [0, -1, -3, -4, -3, -1, 0], total, times)
+            add(headLayer, "transform.rotation.z", [0, 0.035, 0.12, 0.22, 0.14, 0.04, 0], total, times)
+            add(headLayer, "transform.translation.y", [0, -1, -3, -4, -3, -1, 0], total, times)
+            add(leftPawLayer, "transform.rotation.z", [0, 0.12, 0.24, 0.3, 0.22, 0.08, 0], total, times)
+            add(rightPawLayer, "transform.rotation.z", [0, -0.12, -0.24, -0.3, -0.22, -0.08, 0], total, times)
+            add(tailLayer, "transform.rotation.z", [0, -0.1, -0.2, -0.24, -0.16, -0.05, 0], total, times)
+            addShadowPulse(scale: [1, 1.08, 1.16, 1.2, 1.14, 1.06, 1],
+                           opacity: [0.7, 0.75, 0.8, 0.82, 0.78, 0.73, 0.7],
                            duration: total,
                            keyTimes: times)
         }
@@ -548,9 +564,15 @@ final class CatView: NSView {
     }
 
     private func startIdleMotion() {
-        add(bodyLayer, "transform.scale.y", [0.995, 1.018, 0.995], 2.5,
+        add(rigLayer, "transform.translation.y", [0, 0.6, 0], 2.7,
+            repeatCount: .infinity, key: "idleWeight")
+        add(bodyLayer, "transform.scale.y", [0.998, 1.01, 0.998], 2.7,
             additive: false, repeatCount: .infinity, key: "idleBreath")
-        add(tailLayer, "transform.rotation.z", [-0.055, 0.075, -0.055], 2.6,
+        add(headLayer, "transform.rotation.z", [0, 0.012, 0], 2.7,
+            repeatCount: .infinity, key: "idleHeadBalance")
+        add(haunchLayer, "transform.scale.x", [1, 1.008, 1], 2.7,
+            additive: false, repeatCount: .infinity, key: "idleHaunch")
+        add(tailLayer, "transform.rotation.z", [-0.045, 0.065, -0.045], 2.8,
             repeatCount: .infinity, key: "idleTail")
         addShadowPulse(scale: [0.97, 1.03, 0.97],
                        opacity: [0.64, 0.72, 0.64],
@@ -590,11 +612,15 @@ final class CatView: NSView {
             repeatCount: forever, key: "walkWeightShift")
         add(walkBodyLayer, "transform.translation.x", [0, 0.7, 0, -0.7, 0], duration, phases,
             repeatCount: forever, key: "walkBodyWeight")
+        add(walkBodyLayer, "transform.rotation.z", [0.012, 0, -0.012, 0, 0.012], duration, phases,
+            repeatCount: forever, key: "walkSpine")
         add(walkBodyLayer, "transform.scale.x", [1, 1.008, 1, 1.008, 1], duration, phases,
             additive: false, repeatCount: forever, key: "walkBodyStride")
         add(walkHeadLayer, "transform.translation.y", [0, -0.6, 0, -0.6, 0], duration, phases,
             repeatCount: forever, key: "walkHeadBob")
-        add(walkTailLayer, "transform.rotation.z", [-0.045, 0.055, -0.045], 0.82,
+        add(walkHeadLayer, "transform.rotation.z", [-0.01, 0.008, 0.01, -0.008, -0.01], duration, phases,
+            repeatCount: forever, key: "walkHeadBalance")
+        add(walkTailLayer, "transform.rotation.z", [-0.055, 0, 0.065, 0, -0.055], duration, phases,
             repeatCount: forever, key: "walkTail")
         addShadowPulse(scale: [1, 0.96, 1, 0.96, 1],
                        opacity: [0.74, 0.67, 0.74, 0.67, 0.74],
@@ -611,9 +637,13 @@ final class CatView: NSView {
     }
 
     private func reactToClick(at location: NSPoint) {
+        let wasWalking = isWalking
         currentMood = .react
         isWalking = false
         clearActionMotion()
+        if wasWalking {
+            setWalkingPose(false, animated: true)
+        }
         let direction: CGFloat = location.x < bounds.midX ? -1 : 1
         let total: TimeInterval = 0.72
         let times: [NSNumber] = [0, 0.16, 0.42, 0.72, 1]
@@ -775,10 +805,13 @@ final class TianMiaoWindow: NSWindow {
 
 final class BubbleWindow: NSWindow {
     private let label = NSTextField(labelWithString: "")
-    private let bubbleSize = NSSize(width: 176, height: 46)
+    private let bubbleLayer = CAShapeLayer()
+    private let font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
+    private var hideWorkItem: DispatchWorkItem?
 
     init() {
-        super.init(contentRect: NSRect(origin: .zero, size: bubbleSize),
+        let initialSize = NSSize(width: 104, height: 42)
+        super.init(contentRect: NSRect(origin: .zero, size: initialSize),
                    styleMask: [.borderless],
                    backing: .buffered,
                    defer: false)
@@ -789,36 +822,76 @@ final class BubbleWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         ignoresMouseEvents = true
 
-        let content = NSView(frame: NSRect(origin: .zero, size: bubbleSize))
+        let content = NSView(frame: NSRect(origin: .zero, size: initialSize))
         content.wantsLayer = true
-        content.layer?.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.92).cgColor
-        content.layer?.cornerRadius = 14
-        content.layer?.borderColor = NSColor(calibratedWhite: 0.86, alpha: 1).cgColor
-        content.layer?.borderWidth = 1
+        bubbleLayer.fillColor = NSColor(calibratedWhite: 1, alpha: 0.94).cgColor
+        bubbleLayer.strokeColor = NSColor(calibratedWhite: 0.68, alpha: 0.9).cgColor
+        bubbleLayer.lineWidth = 0.8
+        content.layer?.addSublayer(bubbleLayer)
 
-        label.frame = NSRect(x: 10, y: 7, width: bubbleSize.width - 20, height: bubbleSize.height - 14)
-        label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        label.font = font
         label.textColor = NSColor(calibratedWhite: 0.18, alpha: 1)
         label.alignment = .center
         label.lineBreakMode = .byWordWrapping
-        label.maximumNumberOfLines = 2
+        label.maximumNumberOfLines = 3
         content.addSubview(label)
         self.contentView = content
+        layoutBubble(size: initialSize)
     }
 
-    func show(_ message: String, near frame: NSRect, for seconds: TimeInterval = 3.2) {
+    private func fittedSize(for message: String) -> NSSize {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let measured = (message as NSString).boundingRect(
+            with: NSSize(width: 116, height: 120),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        return NSSize(width: min(136, max(72, ceil(measured.width) + 20)),
+                      height: min(62, max(38, ceil(measured.height) + 18)))
+    }
+
+    private func layoutBubble(size: NSSize) {
+        guard let contentView else { return }
+        contentView.frame = NSRect(origin: .zero, size: size)
+        bubbleLayer.frame = contentView.bounds
+        let body = CGRect(x: 1, y: 7, width: size.width - 2, height: size.height - 8)
+        let path = CGMutablePath()
+        path.addRoundedRect(in: body, cornerWidth: 10, cornerHeight: 10)
+        path.move(to: CGPoint(x: size.width * 0.43, y: 8))
+        path.addLine(to: CGPoint(x: size.width * 0.5, y: 1))
+        path.addLine(to: CGPoint(x: size.width * 0.57, y: 8))
+        path.closeSubpath()
+        bubbleLayer.path = path
+        label.frame = NSRect(x: 10, y: 10, width: size.width - 20, height: size.height - 15)
+    }
+
+    func show(_ message: String, near frame: NSRect, walking: Bool, for seconds: TimeInterval = 3.2) {
+        hideWorkItem?.cancel()
         label.stringValue = message
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let rawOrigin = NSPoint(x: frame.midX - self.frame.width / 2, y: frame.maxY + 8)
+        let size = fittedSize(for: message)
+        setContentSize(size)
+        layoutBubble(size: size)
+        orderFront(nil)
+        reposition(near: frame, walking: walking)
+
+        let workItem = DispatchWorkItem { [weak self] in self?.orderOut(nil) }
+        hideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: workItem)
+    }
+
+    func reposition(near frame: NSRect, walking: Bool) {
+        guard isVisible else { return }
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(center) })?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let visibleTop = frame.minY + frame.height * (walking ? 0.74 : 0.93)
+        let rawOrigin = NSPoint(x: frame.midX - self.frame.width / 2, y: visibleTop + 2)
         let origin = NSPoint(
-            x: min(max(rawOrigin.x, screen.minX + 8), screen.maxX - self.frame.width - 8),
-            y: min(max(rawOrigin.y, screen.minY + 8), screen.maxY - self.frame.height - 8)
+            x: min(max(rawOrigin.x, screen.minX + 6), screen.maxX - self.frame.width - 6),
+            y: min(max(rawOrigin.y, screen.minY + 6), screen.maxY - self.frame.height - 6)
         )
         setFrameOrigin(origin)
-        orderFront(nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
-            self?.orderOut(nil)
-        }
     }
 }
 
@@ -856,7 +929,7 @@ final class PetController: NSObject {
         startAmbientBehaviors()
         startGentleReminders()
         startNeedsDecay()
-        showBubble("甜喵来啦，\(stats.moodLine)")
+        showBubble(stats.moodLine)
         if ProcessInfo.processInfo.environment["TIANMIAO_PREVIEW_INTERACTION"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.catView.runInteractionPreview()
@@ -985,6 +1058,9 @@ final class PetController: NSObject {
 
     private func tickMovement() {
         guard let window else { return }
+        defer {
+            bubbleWindow.reposition(near: window.frame, walking: catView.isWalkingPose)
+        }
         switch settings.mode {
         case .roam:
             roam(window)
@@ -1098,7 +1174,7 @@ final class PetController: NSObject {
     func showBubble(_ message: String, seconds: TimeInterval = 3.2) {
         guard !settings.doNotDisturb, let window else { return }
         bubbleWindow.level = settings.alwaysOnTop ? .floating : .normal
-        bubbleWindow.show(message, near: window.frame, for: seconds)
+        bubbleWindow.show(message, near: window.frame, walking: catView.isWalkingPose, for: seconds)
     }
 
     private func showReminder(_ message: String) {
