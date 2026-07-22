@@ -14,11 +14,11 @@
 - 可控：右键菜单可以切换游走、跟随鼠标、角落休息，也能调大小和速度。
 - 尺寸克制：默认按素材真实比例显示为小桌宠，避免挡住桌面内容。
 - 动作质感：用独立图片层、地面阴影、悬浮呼吸、移动倾斜和点击弹性，让逐帧素材更顺、更有层次。
-- 素材处理：运行素材已换成更精致的软萌白猫角色表拆帧，统一为 `360x392` 透明画布，减少逐帧跳动和裁切。
+- 素材处理：运行素材已换成卡通 Q 版白猫，统一为 `360x392` 透明画布，减少逐帧跳动和裁切。
 
 ## 素材说明
 
-`additional/Documents/啾啾_设计素材/原始设计稿.png` 是 2048x2048 白底图，没有透明通道，不适合直接作为桌宠运行素材。当前应用使用 `additional/Applications/啾啾.app/Contents/Resources` 下重新拆帧处理后的逐帧 PNG。`assets/generated/jiujiu-cat-sheet-v27.png` 是当前角色表来源，`scripts/extract_generated_cat_sheet.py` 可重新拆帧。
+`additional/Documents/啾啾_设计素材/原始设计稿.png` 是 2048x2048 白底图，没有透明通道，不适合直接作为桌宠运行素材。当前应用使用 `additional/Applications/啾啾.app/Contents/Resources` 下重新生成的卡通逐帧 PNG。`scripts/generate_cartoon_cat_sprites.py` 可重新生成当前 Q 版素材。
 - 轻提醒：保留桌宠作为温和提醒媒介的思路，每 45 分钟提醒休息喝水，可开启勿扰模式。
 - 专注陪伴：可以让啾啾进入角落休息，并启动 25 分钟专注计时。
 
