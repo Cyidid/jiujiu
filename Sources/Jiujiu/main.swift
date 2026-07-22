@@ -35,7 +35,8 @@ struct PetSettings {
     static func load() -> PetSettings {
         let defaults = UserDefaults.standard
         let mode = PetMode(rawValue: defaults.string(forKey: modeKey) ?? "") ?? .roam
-        let scaleValue = defaults.object(forKey: scaleKey) as? Double ?? 0.82
+        let storedScale = defaults.object(forKey: scaleKey) as? Double
+        let scaleValue = Self.normalizedScale(storedScale)
         let speedValue = defaults.object(forKey: speedKey) as? Double ?? 1.0
         let reminders = defaults.object(forKey: remindersEnabledKey) as? Bool ?? true
         let dnd = defaults.object(forKey: doNotDisturbKey) as? Bool ?? false
@@ -46,6 +47,14 @@ struct PetSettings {
                            remindersEnabled: reminders,
                            doNotDisturb: dnd,
                            alwaysOnTop: alwaysOnTop)
+    }
+
+    private static func normalizedScale(_ storedScale: Double?) -> Double {
+        guard let storedScale else { return 0.58 }
+        if storedScale > 0.8 {
+            return 0.58
+        }
+        return min(0.78, max(0.42, storedScale))
     }
 
     func save() {
@@ -284,9 +293,10 @@ final class JiujiuWindow: NSWindow {
 
 final class BubbleWindow: NSWindow {
     private let label = NSTextField(labelWithString: "")
+    private let bubbleSize = NSSize(width: 176, height: 46)
 
     init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 240, height: 56),
+        super.init(contentRect: NSRect(origin: .zero, size: bubbleSize),
                    styleMask: [.borderless],
                    backing: .buffered,
                    defer: false)
@@ -297,15 +307,15 @@ final class BubbleWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         ignoresMouseEvents = true
 
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 56))
+        let content = NSView(frame: NSRect(origin: .zero, size: bubbleSize))
         content.wantsLayer = true
         content.layer?.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.92).cgColor
         content.layer?.cornerRadius = 14
         content.layer?.borderColor = NSColor(calibratedWhite: 0.86, alpha: 1).cgColor
         content.layer?.borderWidth = 1
 
-        label.frame = NSRect(x: 14, y: 9, width: 212, height: 38)
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        label.frame = NSRect(x: 10, y: 7, width: bubbleSize.width - 20, height: bubbleSize.height - 14)
+        label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         label.textColor = NSColor(calibratedWhite: 0.18, alpha: 1)
         label.alignment = .center
         label.lineBreakMode = .byWordWrapping
@@ -316,7 +326,12 @@ final class BubbleWindow: NSWindow {
 
     func show(_ message: String, near frame: NSRect, for seconds: TimeInterval = 3.2) {
         label.stringValue = message
-        let origin = NSPoint(x: frame.midX - self.frame.width / 2, y: frame.maxY + 10)
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let rawOrigin = NSPoint(x: frame.midX - self.frame.width / 2, y: frame.maxY + 8)
+        let origin = NSPoint(
+            x: min(max(rawOrigin.x, screen.minX + 8), screen.maxX - self.frame.width - 8),
+            y: min(max(rawOrigin.y, screen.minY + 8), screen.maxY - self.frame.height - 8)
+        )
         setFrameOrigin(origin)
         orderFront(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
@@ -337,7 +352,7 @@ final class PetController: NSObject {
     private var velocity = CGVector(dx: 1.8, dy: 1.2)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
-    private let baseSize = NSSize(width: 512, height: 528)
+    private let baseSize = NSSize(width: 243, height: 304)
 
     func start() {
         let size = currentSize()
@@ -375,9 +390,9 @@ final class PetController: NSObject {
         menu.addItem(item("角落休息", action: #selector(setCorner), checked: settings.mode == .corner))
         menu.addItem(NSMenuItem(title: "召唤到鼠标旁", action: #selector(summonToMouse), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(item("小一点", action: #selector(sizeSmall), checked: settings.scale == 0.68))
-        menu.addItem(item("标准大小", action: #selector(sizeNormal), checked: settings.scale == 0.82))
-        menu.addItem(item("大一点", action: #selector(sizeLarge), checked: settings.scale == 1.0))
+        menu.addItem(item("小一点", action: #selector(sizeSmall), checked: abs(settings.scale - 0.46) < 0.01))
+        menu.addItem(item("标准大小", action: #selector(sizeNormal), checked: abs(settings.scale - 0.58) < 0.01))
+        menu.addItem(item("大一点", action: #selector(sizeLarge), checked: abs(settings.scale - 0.72) < 0.01))
         menu.addItem(.separator())
         menu.addItem(item("慢悠悠", action: #selector(speedSlow), checked: settings.speed == 0.65))
         menu.addItem(item("正常速度", action: #selector(speedNormal), checked: settings.speed == 1.0))
@@ -596,19 +611,19 @@ final class PetController: NSObject {
     }
 
     @objc private func sizeSmall() {
-        settings.scale = 0.68
+        settings.scale = 0.46
         applySettings()
         showBubble("变小一点")
     }
 
     @objc private func sizeNormal() {
-        settings.scale = 0.82
+        settings.scale = 0.58
         applySettings()
         showBubble("标准大小")
     }
 
     @objc private func sizeLarge() {
-        settings.scale = 1.0
+        settings.scale = 0.72
         applySettings()
         showBubble("变大一点")
     }
