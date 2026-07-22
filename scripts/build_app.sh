@@ -66,12 +66,14 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-xattr -cr "$APP_DIR"
-xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
-xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
-codesign --force --deep --sign - "$APP_DIR" >/dev/null
 if [ -d "$ROOT_DIR/啾啾.app" ]; then
   mv "$ROOT_DIR/啾啾.app" "$ROOT_DIR/build/啾啾.app.previous.$$"
 fi
 mv "$APP_DIR" "$ROOT_DIR/啾啾.app"
+
+APP_DIR="$ROOT_DIR/啾啾.app"
+xattr -cr "$APP_DIR"
+xattr -d com.apple.FinderInfo "$APP_DIR" 2>/dev/null || true
+xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_DIR" 2>/dev/null || true
+codesign --force --deep --sign - "$APP_DIR" >/dev/null
 echo "Built $APP_DIR"
