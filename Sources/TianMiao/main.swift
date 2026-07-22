@@ -507,33 +507,42 @@ final class CatView: NSView {
         isWalking = true
         setWalkingPose(true, animated: true)
         let forever = Float.infinity
-        add(walkFrontLegLayer, "transform.rotation.z", [-0.055, 0.06, -0.055], 0.54,
+        let duration: TimeInterval = 0.64
+        let phases: [NSNumber] = [0, 0.2, 0.5, 0.7, 1]
+
+        // Opposing diagonal pairs alternate between a planted stance and a lifted return swing.
+        add(walkFrontLegLayer, "transform.rotation.z", [-0.1, 0.015, 0.105, 0.02, -0.1], duration, phases,
             repeatCount: forever, key: "walkFrontRotation")
-        add(walkFrontLegLayer, "transform.translation.y", [0, 2.4, 0], 0.54,
+        add(walkFrontLegLayer, "transform.translation.y", [0, 0, 0.4, 3.8, 0], duration, phases,
             repeatCount: forever, key: "walkFrontLift")
-        add(walkRearLegLayer, "transform.rotation.z", [0.055, -0.055, 0.055], 0.54,
+        add(walkRearLegLayer, "transform.rotation.z", [0.09, -0.015, -0.095, -0.015, 0.09], duration, phases,
             repeatCount: forever, key: "walkRearRotation")
-        add(walkRearLegLayer, "transform.translation.y", [2.4, 0, 2.4], 0.54,
+        add(walkRearLegLayer, "transform.translation.y", [0, 0, 0.4, 3.4, 0], duration, phases,
             repeatCount: forever, key: "walkRearLift")
-        add(walkHindLegLayer, "transform.rotation.z", [-0.045, 0.045, -0.045], 0.54,
+
+        add(walkHindLegLayer, "transform.rotation.z", [-0.09, -0.015, 0.09, 0.015, -0.09], duration, phases,
             repeatCount: forever, key: "walkHindRotation")
-        add(walkHindLegLayer, "transform.translation.y", [0, 2, 0], 0.54,
+        add(walkHindLegLayer, "transform.translation.y", [0.5, 3.2, 0, 0, 0.5], duration, phases,
             repeatCount: forever, key: "walkHindLift")
-        add(walkFrontDownLegLayer, "transform.rotation.z", [0.045, -0.045, 0.045], 0.54,
+        add(walkFrontDownLegLayer, "transform.rotation.z", [0.09, 0.015, -0.09, -0.015, 0.09], duration, phases,
             repeatCount: forever, key: "walkFrontDownRotation")
-        add(walkFrontDownLegLayer, "transform.translation.y", [2, 0, 2], 0.54,
+        add(walkFrontDownLegLayer, "transform.translation.y", [0.5, 3.5, 0, 0, 0.5], duration, phases,
             repeatCount: forever, key: "walkFrontDownLift")
-        add(walkBodyLayer, "transform.translation.y", [0, 1.4, 0], 0.27,
-            repeatCount: forever, key: "walkBodyBob")
-        add(walkBodyLayer, "transform.scale.x", [1, 1.006, 1], 0.54,
+
+        add(rigLayer, "transform.translation.y", [0, 0.9, 0, 0.9, 0], duration, phases,
+            repeatCount: forever, key: "walkWeightShift")
+        add(walkBodyLayer, "transform.translation.x", [0, 0.7, 0, -0.7, 0], duration, phases,
+            repeatCount: forever, key: "walkBodyWeight")
+        add(walkBodyLayer, "transform.scale.x", [1, 1.008, 1, 1.008, 1], duration, phases,
             additive: false, repeatCount: forever, key: "walkBodyStride")
-        add(walkHeadLayer, "transform.translation.y", [0.4, -0.7, 0.4], 0.54,
+        add(walkHeadLayer, "transform.translation.y", [0, -0.6, 0, -0.6, 0], duration, phases,
             repeatCount: forever, key: "walkHeadBob")
         add(walkTailLayer, "transform.rotation.z", [-0.045, 0.055, -0.045], 0.82,
             repeatCount: forever, key: "walkTail")
-        addShadowPulse(scale: [0.94, 1.04, 0.94],
-                       opacity: [0.62, 0.74, 0.62],
-                       duration: 0.54,
+        addShadowPulse(scale: [1, 0.96, 1, 0.96, 1],
+                       opacity: [0.74, 0.67, 0.74, 0.67, 0.74],
+                       duration: duration,
+                       keyTimes: phases,
                        repeatForever: true)
     }
 
@@ -760,6 +769,7 @@ final class PetController: NSObject {
     private var focusTimer: Timer?
     private var velocity = CGVector(dx: -1.45, dy: 0)
     private var isRoamWalking = true
+    private var gaitPhase: CGFloat = 0
     private var roamTransitionAt = Date().addingTimeInterval(5)
     private var settings = PetSettings.load()
     private var stats = PetStats.load()
@@ -934,6 +944,7 @@ final class PetController: NSObject {
             if isRoamWalking {
                 let magnitude = CGFloat.random(in: 1.15...1.7)
                 velocity.dx = Bool.random() ? magnitude : -magnitude
+                gaitPhase = 0
                 roamTransitionAt = Date().addingTimeInterval(Double.random(in: 4.5...9.0))
             } else {
                 roamTransitionAt = Date().addingTimeInterval(Double.random(in: 1.8...4.5))
@@ -946,7 +957,7 @@ final class PetController: NSObject {
             return
         }
 
-        frame.origin.x += velocity.dx * settings.speed * 0.52
+        frame.origin.x += velocity.dx * settings.speed * 0.58 * nextStrideMultiplier()
 
         if frame.minX < screen.minX || frame.maxX > screen.maxX {
             velocity.dx *= -1
@@ -977,9 +988,19 @@ final class PetController: NSObject {
 
     private func move(_ window: NSWindow, toward target: NSPoint, easing: CGFloat) {
         var origin = window.frame.origin
-        origin.x += (target.x - origin.x) * easing
+        let dx = target.x - origin.x
+        origin.x += dx * easing * (abs(dx) > 0.5 ? nextStrideMultiplier() : 1)
         origin.y += (target.y - origin.y) * easing
         window.setFrameOrigin(origin)
+    }
+
+    private func nextStrideMultiplier() -> CGFloat {
+        gaitPhase += (.pi * 2) / (0.64 * 60)
+        if gaitPhase >= .pi * 2 {
+            gaitPhase -= .pi * 2
+        }
+        // Slow at paw contact and accelerate through the push-off phase.
+        return 0.58 + 0.62 * abs(sin(gaitPhase))
     }
 
     func pauseMovement() {
